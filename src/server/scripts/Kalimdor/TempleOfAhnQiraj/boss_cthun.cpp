@@ -124,6 +124,7 @@ enum Yells
 #define LESSTHAN6                           6
 #define LESSTHAN11                          12
 #define LESSTHAN21                          18
+#define GIANTSPAWNCAP                       5
 
 //Flesh tentacle positions
 const Position FleshTentaclePos[2] =
@@ -412,6 +413,7 @@ struct boss_cthun : public BossAI
     {
         //One random wisper every 90 - 300 seconds
         WisperTimer = 90000;
+        _giant_tentacle_cap = 0;
 
         _fleshTentaclesKilled = 0;
 
@@ -487,9 +489,12 @@ struct boss_cthun : public BossAI
             if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, NotInStomachSelector()))
             {
                 //Spawn claw tentacle on the random target
-                if (Creature* spawned = me->SummonCreature(NPC_GIANT_CLAW_TENTACLE, *target, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5000))
-                {
-                    spawned->AI()->AttackStart(target);
+                if(_giant_tentacle_cap < GIANTSPAWNCAP){
+                    if (Creature* spawned = me->SummonCreature(NPC_GIANT_CLAW_TENTACLE, *target, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5000))
+                    {
+                        spawned->AI()->AttackStart(target);
+                    }
+                    _giant_tentacle_cap++;
                 }
             }
 
@@ -580,6 +585,7 @@ struct boss_cthun : public BossAI
 
                 DoCast(me, SPELL_PURPLE_COLORATION, true);
                 me->RemoveAurasDueToSpell(SPELL_CARAPACE_CTHUN);
+                _giant_tentacle_cap = 0;
 
                 scheduler.Schedule(45s, [this](TaskContext /*context*/)
                 {
@@ -595,11 +601,13 @@ struct boss_cthun : public BossAI
                 });
             }
         }
+
     }
 
     private:
         //Out of combat whisper timer
         uint32 WisperTimer;
+        uint8 _giant_tentacle_cap;
 
         //Body Phase
         uint8 _fleshTentaclesKilled;
