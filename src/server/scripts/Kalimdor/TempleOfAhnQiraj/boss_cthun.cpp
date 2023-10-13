@@ -490,7 +490,7 @@ struct boss_cthun : public BossAI
             {
                 //Spawn claw tentacle on the random target
                 if(_giant_tentacle_cap < GIANTSPAWNCAP){
-                    if (Creature* spawned = me->SummonCreature(NPC_GIANT_CLAW_TENTACLE, *target, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5000))
+                    if (Creature* spawned = me->SummonCreature(NPC_GIANT_CLAW_TENTACLE, *target, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 45))
                     {
                         spawned->AI()->AttackStart(target);
                     }
@@ -574,7 +574,7 @@ struct boss_cthun : public BossAI
             ++_fleshTentaclesKilled;
 
             creature->CastSpell(creature, SPELL_ROCKY_GROUND_IMPACT, true);
-
+            
             if (_fleshTentaclesKilled > 1)
             {
                 scheduler.CancelAll();
