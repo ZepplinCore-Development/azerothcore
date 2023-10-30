@@ -13426,16 +13426,11 @@ LootItem* Player::StoreLootItem(uint8 lootSlot, Loot* loot, InventoryResult& msg
     LootItem* item = loot->LootItemInSlot(lootSlot, this, &qitem, &ffaitem, &conditem);
     if (!item || item->is_looted)
     {
-        if (sConfigMgr->GetOption<bool>("AOE.LOOT.enable", true))
-        {
-            // SendEquipError(EQUIP_ERR_ALREADY_LOOTED, nullptr, nullptr); prevents error already loot from spamming
-            return nullptr;
-        }
-        else
+        if (!sScriptMgr->CanSendErrorAlreadyLooted(this))
         {
             SendEquipError(EQUIP_ERR_ALREADY_LOOTED, nullptr, nullptr);
-            return nullptr;
         }
+        return nullptr;
     }
 
     // Xinef: exploit protection, dont allow to loot normal items if player is not master loot and not below loot threshold
