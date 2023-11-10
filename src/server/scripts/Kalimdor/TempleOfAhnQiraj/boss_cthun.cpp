@@ -580,7 +580,6 @@ struct boss_cthun : public BossAI
 
                 DoCast(me, SPELL_PURPLE_COLORATION, true);
                 me->RemoveAurasDueToSpell(SPELL_CARAPACE_CTHUN);
-                _giant_tentacle_cap = 0;
 
                 scheduler.Schedule(45s, [this](TaskContext /*context*/)
                 {
@@ -602,7 +601,6 @@ struct boss_cthun : public BossAI
     private:
         //Out of combat whisper timer
         uint32 WisperTimer;
-        uint8 _giant_tentacle_cap;
 
         //Body Phase
         uint8 _fleshTentaclesKilled = 0;
