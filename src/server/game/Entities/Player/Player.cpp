@@ -53,14 +53,12 @@
 #include "InstanceSaveMgr.h"
 #include "InstanceScript.h"
 #include "LFGMgr.h"
-#include "Language.h"
 #include "Log.h"
 #include "LootItemStorage.h"
 #include "MapMgr.h"
 #include "MiscPackets.h"
 #include "ObjectAccessor.h"
 #include "ObjectMgr.h"
-#include "Opcodes.h"
 #include "OutdoorPvP.h"
 #include "OutdoorPvPMgr.h"
 #include "Pet.h"
@@ -80,7 +78,6 @@
 #include "Tokenize.h"
 #include "Transport.h"
 #include "UpdateData.h"
-#include "UpdateFieldFlags.h"
 #include "Util.h"
 #include "Vehicle.h"
 #include "Weather.h"
@@ -4484,6 +4481,7 @@ void Player::KillPlayer()
     if (corpseReclaimDelay >= 0)
         SendCorpseReclaimDelay(corpseReclaimDelay);
 
+    sScriptMgr->OnPlayerJustDied(this);
     // don't create corpse at this moment, player might be falling
 
     // update visibility

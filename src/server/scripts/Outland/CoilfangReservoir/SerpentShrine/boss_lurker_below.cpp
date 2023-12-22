@@ -23,12 +23,13 @@
 
 enum Spells
 {
-    SPELL_WATER_BOLT            = 37138,
-    SPELL_WHIRL                 = 37660,
-    SPELL_GEYSER                = 37478,
-    SPELL_SPOUT_VISUAL          = 37431,
-    SPELL_SPOUT_PERIODIC        = 37430,
-    SPELL_LURKER_SPAWN_TRIGGER  = 54587, // Needed for achievement
+    SPELL_WATER_BOLT              = 37138,
+    SPELL_WHIRL                   = 37660,
+    SPELL_GEYSER                  = 37478,
+    SPELL_SPOUT_VISUAL            = 37431,
+    SPELL_SPOUT_PERIODIC_1        = 37429,
+    SPELL_SPOUT_PERIODIC_2        = 37430,
+    SPELL_LURKER_SPAWN_TRIGGER    = 54587, // Needed for achievement
 
     SPELL_CLEAR_ALL_DEBUFFS     = 34098,
     SPELL_SUBMERGE_VISUAL       = 28819,
@@ -85,11 +86,12 @@ struct boss_the_lurker_below : public BossAI
     {
         if (action == ACTION_START_EVENT)
         {
+            me->SetStandState(UNIT_STAND_STATE_SUBMERGED);
             me->SetReactState(REACT_AGGRESSIVE);
             me->setAttackTimer(BASE_ATTACK, 6000);
             me->RemoveUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
-            me->SetStandState(UNIT_STAND_STATE_STAND);
             me->SetInCombatWithZone();
+            me->SetStandState(UNIT_STAND_STATE_STAND);
         }
     }
 
@@ -106,6 +108,14 @@ struct boss_the_lurker_below : public BossAI
         BossAI::JustEngagedWith(who);
 
         SchedulerPhaseOne(38800ms, 91000ms);
+    }
+
+    void SummonedCreatureDies(Creature* /*summon*/, Unit* /*killer*/) override
+    {
+        if (!summons.IsAnyCreatureAlive() && me->HasUnitFlag(UNIT_FLAG_NOT_SELECTABLE))
+        {
+            SchedulerPhaseTwo(1s);
+        }
     }
 
     void SchedulerPhaseOne(std::chrono::milliseconds spoutTimer, std::chrono::milliseconds p2Timer)
@@ -126,18 +136,18 @@ struct boss_the_lurker_below : public BossAI
             me->SetFacingToObject(me->GetVictim());
             me->SetTarget();
             scheduler.RescheduleGroup(GROUP_GEYSER, 25s);
-            scheduler.RescheduleGroup(GROUP_WHIRL, 18s);
+            scheduler.RescheduleGroup(GROUP_WHIRL, 20s);
             scheduler.Schedule(3s, [this](TaskContext)
             {
                 me->InterruptNonMeleeSpells(false);
-                DoCastSelf(SPELL_SPOUT_PERIODIC, true);
+                DoCastSelf(RAND(SPELL_SPOUT_PERIODIC_1, SPELL_SPOUT_PERIODIC_2), true);
             });
             context.Repeat(60s);
         }).Schedule(p2Timer, [this](TaskContext)
         {
             //phase2
             scheduler.CancelAll();
-            DoCastSelf(SPELL_SUBMERGE_VISUAL, true);
+            DoCastSelf(SPELL_SUBMERGE_VISUAL);
             DoCastSelf(SPELL_CLEAR_ALL_DEBUFFS, true);
             me->SetStandState(UNIT_STAND_STATE_SUBMERGED);
             me->SetUnitFlag(UNIT_FLAG_NOT_SELECTABLE);
@@ -146,13 +156,13 @@ struct boss_the_lurker_below : public BossAI
                 //needs sniffed spell probably
                 me->SummonCreature(i < 6 ? NPC_COILFANG_AMBUSHER : NPC_COILFANG_GUARDIAN, positions[i].GetPositionX(), positions[i].GetPositionY(), positions[i].GetPositionZ(), positions[i].GetAngle(me), TEMPSUMMON_TIMED_DESPAWN_OUT_OF_COMBAT, 10000);
             }
-            SchedulerPhaseTwo();
+            SchedulerPhaseTwo(60s);
         });
     }
 
-    void SchedulerPhaseTwo()
+    void SchedulerPhaseTwo(Milliseconds timer)
     {
-        scheduler.Schedule(60s, [this](TaskContext)
+        scheduler.Schedule(timer, [this](TaskContext)
         {
             me->setAttackTimer(BASE_ATTACK, 6000);
             me->SetStandState(UNIT_STAND_STATE_STAND);
@@ -216,7 +226,7 @@ public:
             if (roll_chance_i(instance->GetBossState(DATA_THE_LURKER_BELOW) != DONE ? 25 : 0) && !instance->IsEncounterInProgress())
             {
                 player->CastSpell(player, SPELL_LURKER_SPAWN_TRIGGER, true);
-                if (Creature* lurker = go->SummonCreature(NPC_THE_LURKER_BELOW, 40.4058f, -417.108f, -21.5911f, 3.03312f, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 604800000))
+                if (Creature* lurker = go->SummonCreature(NPC_THE_LURKER_BELOW, 38.4567f, -417.324f, -18.916666f, 2.94960f, TEMPSUMMON_MANUAL_DESPAWN))
                     lurker->AI()->DoAction(ACTION_START_EVENT);
                 return true;
             }
@@ -231,7 +241,12 @@ class spell_lurker_below_spout : public AuraScript
 
     void HandleEffectApply(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
     {
-        SetDuration(13000);
+        SetDuration(16000);
+    }
+
+    void CalcPeriodic(AuraEffect const* /*aurEff*/, bool& /*isPeriodic*/, int32& amplitude)
+    {
+        amplitude = 250;
     }
 
     void HandleEffectRemove(AuraEffect const* /*aurEff*/, AuraEffectHandleModes /*mode*/)
@@ -248,30 +263,19 @@ class spell_lurker_below_spout : public AuraScript
     void OnPeriodic(AuraEffect const* aurEff)
     {
         PreventDefaultAction();
-        GetUnitOwner()->SetFacingTo(Position::NormalizeOrientation(GetUnitOwner()->GetOrientation() + 0.1f));
+        Unit* caster = GetUnitOwner();
+        float orientation = GetSpellInfo()->Id == SPELL_SPOUT_PERIODIC_1 ? Position::NormalizeOrientation(caster->GetOrientation() + 0.1f) : Position::NormalizeOrientation(caster->GetOrientation() - 0.1f);
+        caster->SetFacingTo(orientation);
         GetUnitOwner()->CastSpell(GetUnitOwner(), aurEff->GetAmount(), true);
     }
 
     void Register() override
     {
+        DoEffectCalcPeriodic += AuraEffectCalcPeriodicFn(spell_lurker_below_spout::CalcPeriodic, EFFECT_0, SPELL_AURA_PERIODIC_TRIGGER_SPELL);
         OnEffectApply += AuraEffectApplyFn(spell_lurker_below_spout::HandleEffectApply, EFFECT_0, SPELL_AURA_PERIODIC_TRIGGER_SPELL, AURA_EFFECT_HANDLE_REAL);
         OnEffectRemove += AuraEffectRemoveFn(spell_lurker_below_spout::HandleEffectRemove, EFFECT_0, SPELL_AURA_PERIODIC_TRIGGER_SPELL, AURA_EFFECT_HANDLE_REAL);
         OnEffectPeriodic += AuraEffectPeriodicFn(spell_lurker_below_spout::OnPeriodic, EFFECT_0, SPELL_AURA_PERIODIC_TRIGGER_SPELL);
     }
-};
-
-class HasInLineCheck
-{
-public:
-    HasInLineCheck(Unit* caster) : _caster(caster) { }
-
-    bool operator()(WorldObject* unit)
-    {
-        return !_caster->HasInLine(unit, 5.0f) || (unit->GetTypeId() == TYPEID_UNIT && unit->ToUnit()->IsUnderWater());
-    }
-
-private:
-    Unit* _caster;
 };
 
 class spell_lurker_below_spout_cone : public SpellScript
@@ -280,7 +284,10 @@ class spell_lurker_below_spout_cone : public SpellScript
 
     void FilterTargets(std::list<WorldObject*>& targets)
     {
-        targets.remove_if(HasInLineCheck(GetCaster()));
+        targets.remove_if([this](WorldObject const* target) -> bool
+        {
+            return !GetCaster()->HasInLine(target, 5.0f) || !target->IsPlayer() || target->ToUnit()->IsInWater();
+        });
     }
 
     void Register() override
