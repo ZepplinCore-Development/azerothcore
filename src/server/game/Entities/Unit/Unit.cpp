@@ -7917,8 +7917,8 @@ bool Unit::HandleDummyAuraProc(Unit* victim, uint32 damage, AuraEffect* triggere
                     case 91056:
                         {
                             // if healed by another unit (victim)
-                            if (this == victim)
-                                return false;
+                            //if (this == victim)
+                            //    return false;
 
                             // dont allow non-positive dots to proc
                             if (!procSpell || !procSpell->IsPositive())
