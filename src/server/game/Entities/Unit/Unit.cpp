@@ -11521,9 +11521,6 @@ float Unit::SpellPctDamageModsDone(Unit* victim, SpellInfo const* spellProto, Da
             {
                 if (victim->HasAuraState(AURA_STATE_FROZEN, spellProto, this))
                 {
-                    // 2% of max HP
-                    basepoints0 = int32(victim->CountPctFromMaxHealth(2));
-                    owner->CastCustomSpell(owner, 20267, &basepoints0, 0, 0, true, 0, triggeredByAura);
                     // Glyph of Ice Lance
                     if (owner->HasAura(56377) && victim->GetLevel() > owner->GetLevel())
                         DoneTotalMod *= 4.0f;
