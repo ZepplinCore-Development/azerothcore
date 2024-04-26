@@ -8824,13 +8824,13 @@ bool Unit::HandleAuraProc(Unit* victim, uint32 damage, Aura* triggeredByAura, Sp
                     // Magical Attunement
                     case 91056:
                         {
-                            // if healed by another unit (victim)
-                            //if (this == victim)
-                            //    return false;
-
                             // dont allow non-positive dots to proc
                             if (!procSpell || !procSpell->IsPositive())
                                 return false;
+
+                            //if healed by another unit (victim)
+                            //if (this == victim)
+                            //    return false;
 
                             HealInfo const* healInfo = eventInfo.GetHealInfo();
                             if (!healInfo)
