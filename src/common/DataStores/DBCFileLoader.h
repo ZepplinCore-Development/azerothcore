@@ -21,6 +21,7 @@
 #include "Define.h"
 #include "Errors.h"
 #include "Utilities/ByteConverter.h"
+#include <iostream>
 
 enum DbcFieldFormat
 {
@@ -72,6 +73,9 @@ public:
         {
             ASSERT(field < file.fieldCount);
             size_t stringOffset = getUInt(field);
+            if (stringOffset >= file.stringSize ){
+                std::cout << "The Value of stringOffset is " << stringOffset << '\n';
+            }
             ASSERT(stringOffset < file.stringSize);
             return reinterpret_cast<char*>(file.stringTable + stringOffset);
         }
