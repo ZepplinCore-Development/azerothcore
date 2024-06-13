@@ -101,7 +101,7 @@ struct boss_exarch_maladaar : public BossAI
             context.Repeat(15s, 25s);
         }).Schedule(5s, [this](TaskContext context)
         {
-            DoCastRandomTarget(SPELL_RIBBON_OF_SOULS);
+            DoCastVictim(SPELL_RIBBON_OF_SOULS);
             context.Repeat(10s, 20s);
         }).Schedule(25s, [this](TaskContext context)
         {
