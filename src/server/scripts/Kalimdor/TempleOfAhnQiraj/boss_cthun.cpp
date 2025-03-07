@@ -114,7 +114,6 @@ const Position StomachPosition = { -8562.0f, 2037.0f, -70.0f, 5.05f };
 #define LESSTHAN11                          12
 #define LESSTHAN21                          18
 
-//Flesh tentacle positions
 const Position FleshTentaclePos[2] =
 {
     { -8571.0f, 1990.0f, -98.0f, 1.22f},
@@ -439,14 +438,11 @@ struct boss_cthun : public BossAI
             if (Creature* eye = instance->GetCreature(DATA_EYE_OF_CTHUN))
                 eye->AI()->DoAction(ACTION_SPAWN_EYE_TENTACLES);
 
-            context.Repeat(30s);
-        }).Schedule(24s, [this](TaskContext context)
+            context.Repeat();
+        }).Schedule(8s, [this](TaskContext context)
         {
             if (Unit* target = SelectTarget(SelectTargetMethod::Random, 0, NotInStomachSelector()))
-            {
-                //Spawn claw tentacle on the random target
-                if (Creature* spawned = me->SummonCreature(NPC_GIANT_CLAW_TENTACLE, *target, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 45))
-                {
+                if (Creature* spawned = me->SummonCreature(NPC_GIANT_CLAW_TENTACLE, *target, TEMPSUMMON_CORPSE_TIMED_DESPAWN, 5000))
                     spawned->AI()->AttackStart(target);
 
             context.Repeat(1min);
