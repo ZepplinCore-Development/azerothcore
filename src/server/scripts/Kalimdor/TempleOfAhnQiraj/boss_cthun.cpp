@@ -709,6 +709,7 @@ struct npc_giant_claw_tentacle : public ScriptedAI
                     {
                         // Main target not found within melee range, try to select a new one
                         if (Player* newTarget = me->SelectNearestPlayer(5.0f))
+                        {
                             AttackStart(newTarget);
                         }
                         //else // Main target not found, and failed to acquire a new target... Submerge
