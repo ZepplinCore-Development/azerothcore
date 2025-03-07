@@ -85,7 +85,7 @@ namespace MMAP
         }
 
         // load and init dtNavMesh - read parameters from file
-        std::string fileName = Acore::StringFormat(MAP_FILE_NAME_FORMAT, sConfigMgr->GetOption<std::string>("DataDir", ".").c_str(), mapId);
+        std::string fileName = Acore::StringFormat(MAP_FILE_NAME_FORMAT, sConfigMgr->GetOption<std::string>("DataDir", "."), mapId);
 
         FILE* file = fopen(fileName.c_str(), "rb");
         if (!file)
@@ -146,7 +146,7 @@ namespace MMAP
         }
 
         // load this tile :: mmaps/MMMXXYY.mmtile
-        std::string fileName = Acore::StringFormat(TILE_FILE_NAME_FORMAT, sConfigMgr->GetOption<std::string>("DataDir", ".").c_str(), mapId, x, y);
+        std::string fileName = Acore::StringFormat(TILE_FILE_NAME_FORMAT, sConfigMgr->GetOption<std::string>("DataDir", "."), mapId, x, y);
         FILE* file = fopen(fileName.c_str(), "rb");
         if (!file)
         {
@@ -174,7 +174,7 @@ namespace MMAP
         unsigned char* data = (unsigned char*)dtAlloc(fileHeader.size, DT_ALLOC_PERM);
         ASSERT(data);
 
-        size_t result = fread(data, fileHeader.size, 1, file);
+        std::size_t result = fread(data, fileHeader.size, 1, file);
         if (!result)
         {
             LOG_ERROR("maps", "MMAP:loadMap: Bad header or data in mmap {:03}{:02}{:02}.mmtile", mapId, x, y);
