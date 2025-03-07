@@ -204,7 +204,7 @@ void TempSummon::InitStats(uint32 duration)
     Unit* owner = GetSummonerUnit();
     if (owner)
         if (Player* player = owner->ToPlayer())
-            sScriptMgr->OnBeforeTempSummonInitStats(player, this, duration);
+            sScriptMgr->OnPlayerBeforeTempSummonInitStats(player, this, duration);
 
     m_timer = duration;
     m_lifetime = duration;
@@ -254,14 +254,14 @@ void TempSummon::InitSummon()
     WorldObject* owner = GetSummoner();
     if (owner)
     {
-        if (owner->GetTypeId() == TYPEID_UNIT)
+        if (owner->IsCreature())
         {
             if (owner->ToCreature()->IsAIEnabled)
             {
                 owner->ToCreature()->AI()->JustSummoned(this);
             }
         }
-        else if (owner->GetTypeId() == TYPEID_GAMEOBJECT)
+        else if (owner->IsGameObject())
         {
             if (owner->ToGameObject()->AI())
             {
@@ -272,6 +272,11 @@ void TempSummon::InitSummon()
         if (IsAIEnabled)
             AI()->IsSummonedBy(owner);
     }
+}
+
+void TempSummon::UpdateObjectVisibilityOnCreate()
+{
+    WorldObject::UpdateObjectVisibility(true);
 }
 
 void TempSummon::SetTempSummonType(TempSummonType type)
@@ -304,14 +309,10 @@ void TempSummon::UnSummon(uint32 msTime)
 
     if (WorldObject* owner = GetSummoner())
     {
-        if (owner->GetTypeId() == TYPEID_UNIT && owner->ToCreature()->IsAIEnabled)
-        {
+        if (owner->IsCreature() && owner->ToCreature()->IsAIEnabled)
             owner->ToCreature()->AI()->SummonedCreatureDespawn(this);
-        }
-        else if (owner->GetTypeId() == TYPEID_GAMEOBJECT && owner->ToGameObject()->AI())
-        {
+        else if (owner->IsGameObject() && owner->ToGameObject()->AI())
             owner->ToGameObject()->AI()->SummonedCreatureDespawn(this);
-        }
     }
 
     AddObjectToRemoveList();
@@ -419,7 +420,7 @@ std::string Minion::GetDebugInfo() const
 Guardian::Guardian(SummonPropertiesEntry const* properties, ObjectGuid owner, bool isWorldObject) : Minion(properties, owner, isWorldObject)
 {
     m_unitTypeMask |= UNIT_MASK_GUARDIAN;
-    if (properties && properties->Type == SUMMON_TYPE_PET)
+    if (properties && (properties->Type == SUMMON_TYPE_PET || properties->Category == SUMMON_CATEGORY_PET))
     {
         m_unitTypeMask |= UNIT_MASK_CONTROLABLE_GUARDIAN;
         InitCharmInfo();

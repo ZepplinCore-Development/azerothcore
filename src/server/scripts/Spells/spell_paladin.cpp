@@ -969,7 +969,7 @@ class spell_pal_lay_on_hands : public SpellScript
         Unit* caster = GetCaster();
         if (Unit* target = GetExplTargetUnit())
             if (caster == target)
-                if (target->HasAura(SPELL_PALADIN_FORBEARANCE) || target->HasAura(SPELL_PALADIN_AVENGING_WRATH_MARKER) || target->HasAura(SPELL_PALADIN_IMMUNE_SHIELD_MARKER))
+                if (target->HasAnyAuras(SPELL_PALADIN_FORBEARANCE, SPELL_PALADIN_AVENGING_WRATH_MARKER, SPELL_PALADIN_IMMUNE_SHIELD_MARKER))
                     return SPELL_FAILED_TARGET_AURASTATE;
 
         // Xinef: Glyph of Divinity
@@ -1021,7 +1021,7 @@ class spell_pal_righteous_defense : public SpellScript
     SpellCastResult CheckCast()
     {
         Unit* caster = GetCaster();
-        if (caster->GetTypeId() != TYPEID_PLAYER)
+        if (!caster->IsPlayer())
             return SPELL_FAILED_DONT_REPORT;
 
         if (Unit* target = GetExplTargetUnit())

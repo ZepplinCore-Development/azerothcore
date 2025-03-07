@@ -22,6 +22,7 @@
 #include "SpellAuraEffects.h"
 #include "SpellScriptLoader.h"
 #include "icecrown_citadel.h"
+#include "PassiveAI.h"
 
 enum Texts
 {
@@ -341,9 +342,9 @@ public:
             }
         }
 
-        void DamageDealt(Unit* target, uint32& damage, DamageEffectType  /*damageType*/) override
+        void DamageDealt(Unit* target, uint32& damage, DamageEffectType  /*damageType*/, SpellSchoolMask /*damageSchoolMask*/) override
         {
-            if (target->GetTypeId() != TYPEID_PLAYER)
+            if (!target->IsPlayer())
                 return;
 
             if (damage > RAID_MODE<uint32>(23000, 25000, 23000, 25000))
@@ -611,9 +612,9 @@ public:
             }
         }
 
-        void DamageDealt(Unit* target, uint32& damage, DamageEffectType  /*damageType*/) override
+        void DamageDealt(Unit* target, uint32& damage, DamageEffectType  /*damageType*/, SpellSchoolMask /*damageSchoolMask*/) override
         {
-            if (target->GetTypeId() != TYPEID_PLAYER)
+            if (!target->IsPlayer())
                 return;
 
             if (damage > RAID_MODE<uint32>(23000, 25000, 23000, 25000))
@@ -905,9 +906,9 @@ public:
             }
         }
 
-        void DamageDealt(Unit* target, uint32& damage, DamageEffectType  /*damageType*/) override
+        void DamageDealt(Unit* target, uint32& damage, DamageEffectType  /*damageType*/, SpellSchoolMask /*damageSchoolMask*/) override
         {
-            if (target->GetTypeId() != TYPEID_PLAYER)
+            if (!target->IsPlayer())
                 return;
 
             if (damage > RAID_MODE<uint32>(23000, 25000, 23000, 25000))
@@ -1102,7 +1103,7 @@ public:
             if (_introDone)
                 return;
 
-            if (who->GetTypeId() != TYPEID_PLAYER || me->GetExactDist2d(who) > 100.0f)
+            if (!who->IsPlayer() || me->GetExactDist2d(who) > 100.0f)
             {
                 return;
             }
@@ -1333,9 +1334,9 @@ public:
             me->DespawnOrUnsummon(1);
         }
 
-        void DamageDealt(Unit* target, uint32& damage, DamageEffectType  /*damageType*/) override
+        void DamageDealt(Unit* target, uint32& damage, DamageEffectType  /*damageType*/, SpellSchoolMask /*damageSchoolMask*/) override
         {
-            if (target->GetTypeId() != TYPEID_PLAYER)
+            if (!target->IsPlayer())
             {
                 return;
             }
@@ -1506,7 +1507,7 @@ class spell_taldaram_summon_flame_ball : public SpellScript
 
     bool Load() override
     {
-        if (GetCaster()->GetTypeId() != TYPEID_UNIT)
+        if (!GetCaster()->IsCreature())
         {
             return false;
         }
@@ -1573,7 +1574,7 @@ class spell_valanar_kinetic_bomb_aura : public AuraScript
     void HandleDummyTick(AuraEffect const* /*aurEff*/)
     {
         Unit* target = GetTarget();
-        if (target->GetTypeId() != TYPEID_UNIT)
+        if (!target->IsCreature())
             return;
 
         if (Creature* bomb = target->FindNearestCreature(NPC_KINETIC_BOMB, 1.0f, true))

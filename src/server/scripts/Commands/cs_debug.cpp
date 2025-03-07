@@ -28,7 +28,6 @@
 #include "Channel.h"
 #include "Chat.h"
 #include "CommandScript.h"
-#include "GossipDef.h"
 #include "GridNotifiersImpl.h"
 #include "LFGMgr.h"
 #include "Language.h"
@@ -64,7 +63,7 @@ public:
         {
             { "buyerror",       HandleDebugSendBuyErrorCommand,        SEC_ADMINISTRATOR, Console::No },
             { "channelnotify",  HandleDebugSendChannelNotifyCommand,   SEC_ADMINISTRATOR, Console::No },
-            { "chatmmessage",   HandleDebugSendChatMsgCommand,         SEC_ADMINISTRATOR, Console::No },
+            { "chatmessage",    HandleDebugSendChatMsgCommand,         SEC_ADMINISTRATOR, Console::No },
             { "equiperror",     HandleDebugSendEquipErrorCommand,      SEC_ADMINISTRATOR, Console::No },
             { "largepacket",    HandleDebugSendLargePacketCommand,     SEC_ADMINISTRATOR, Console::No },
             { "opcode",         HandleDebugSendOpcodeCommand,          SEC_ADMINISTRATOR, Console::No },
@@ -82,6 +81,7 @@ public:
             { "anim",           HandleDebugAnimCommand,                SEC_ADMINISTRATOR, Console::No },
             { "arena",          HandleDebugArenaCommand,               SEC_ADMINISTRATOR, Console::No },
             { "bg",             HandleDebugBattlegroundCommand,        SEC_ADMINISTRATOR, Console::No },
+            { "cooldown",       HandleDebugCooldownCommand,            SEC_ADMINISTRATOR, Console::No },
             { "getitemstate",   HandleDebugGetItemStateCommand,        SEC_ADMINISTRATOR, Console::No },
             { "lootrecipient",  HandleDebugGetLootRecipientCommand,    SEC_ADMINISTRATOR, Console::No },
             { "getvalue",       HandleDebugGetValueCommand,            SEC_ADMINISTRATOR, Console::No },
@@ -104,7 +104,8 @@ public:
             { "moveflags",      HandleDebugMoveflagsCommand,           SEC_ADMINISTRATOR, Console::No },
             { "unitstate",      HandleDebugUnitStateCommand,           SEC_ADMINISTRATOR, Console::No },
             { "objectcount",    HandleDebugObjectCountCommand,         SEC_ADMINISTRATOR, Console::Yes},
-            { "dummy",          HandleDebugDummyCommand,               SEC_ADMINISTRATOR, Console::No }
+            { "dummy",          HandleDebugDummyCommand,               SEC_ADMINISTRATOR, Console::No },
+            { "mapdata",        HandleDebugMapDataCommand,             SEC_ADMINISTRATOR, Console::No }
         };
         static ChatCommandTable commandTable =
         {
@@ -263,7 +264,7 @@ public:
         Unit* unit = handler->getSelectedUnit();
         Player* player = nullptr;
 
-        if (!unit || (unit->GetTypeId() != TYPEID_PLAYER))
+        if (!unit || (!unit->IsPlayer()))
         {
             player = handler->GetSession()->GetPlayer();
         }
@@ -784,6 +785,33 @@ public:
         return true;
     }
 
+    static bool HandleDebugCooldownCommand(ChatHandler* handler, uint32 spell_id, uint32 end_time, Optional<uint32> item_id)
+    {
+        Player* player = handler->GetPlayer();
+
+        if (!player || !spell_id || !end_time)
+            return false;
+
+        if (!sSpellMgr->GetSpellInfo(spell_id))
+            return false;
+
+        if (!item_id)
+            item_id = 0;
+        else if (!sItemStore.LookupEntry(*item_id))
+            return false;
+
+        if (end_time < player->GetSpellCooldownDelay(spell_id))
+            player->RemoveSpellCooldown(spell_id, true);
+
+        player->AddSpellCooldown(spell_id, *item_id, end_time, true, false);
+
+        WorldPacket data;
+        player->BuildCooldownPacket(data, SPELL_COOLDOWN_FLAG_NONE, spell_id, end_time);
+        player->SendDirectMessage(&data);
+
+        return true;
+    }
+
     static bool HandleDebugArenaCommand(ChatHandler* /*handler*/)
     {
         sBattlegroundMgr->ToggleArenaTesting();
@@ -897,7 +925,7 @@ public:
             passenger->EnterVehicle(target, *seatId);
         }
 
-        handler->PSendSysMessage("Unit {} entered vehicle %hhd", entry, *seatId);
+        handler->PSendSysMessage("Unit {} entered vehicle {:d}", entry, *seatId);
         return true;
     }
 
@@ -1344,6 +1372,20 @@ public:
     static bool HandleDebugDummyCommand(ChatHandler* handler)
     {
         handler->SendSysMessage("This command does nothing right now. Edit your local core (cs_debug.cpp) to make it do whatever you need for testing.");
+        return true;
+    }
+
+    static bool HandleDebugMapDataCommand(ChatHandler* handler)
+    {
+        Cell cell(handler->GetPlayer()->GetPositionX(), handler->GetPlayer()->GetPositionY());
+        Map* map = handler->GetPlayer()->GetMap();
+
+        handler->PSendSysMessage("GridX {} GridY {}", cell.GridX(), cell.GridY());
+        handler->PSendSysMessage("CellX {} CellY {}", cell.CellX(), cell.CellY());
+        handler->PSendSysMessage("Created Grids: {} / {}", map->GetCreatedGridsCount(), MAX_NUMBER_OF_GRIDS * MAX_NUMBER_OF_GRIDS);
+        handler->PSendSysMessage("Loaded Grids: {} / {}", map->GetLoadedGridsCount(), MAX_NUMBER_OF_GRIDS * MAX_NUMBER_OF_GRIDS);
+        handler->PSendSysMessage("Created Cells In Grid: {} / {}", map->GetCreatedCellsInGridCount(cell.GridX(), cell.GridY()), MAX_NUMBER_OF_CELLS * MAX_NUMBER_OF_CELLS);
+        handler->PSendSysMessage("Created Cells In Map: {} / {}", map->GetCreatedCellsInMapCount(), TOTAL_NUMBER_OF_CELLS_PER_MAP * TOTAL_NUMBER_OF_CELLS_PER_MAP);
         return true;
     }
 };

@@ -241,7 +241,7 @@ void Guild::BankEventLogEntry::WritePacket(WorldPackets::Guild::GuildBankLogQuer
     bankLogEntry.TimeOffset = int32(GameTime::GetGameTime().count() - m_timestamp);
     bankLogEntry.EntryType = int8(m_eventType);
 
-    switch(m_eventType)
+    switch (m_eventType)
     {
         case GUILD_BANK_LOG_DEPOSIT_ITEM:
         case GUILD_BANK_LOG_WITHDRAW_ITEM:
@@ -1556,11 +1556,14 @@ void Guild::HandleRemoveMember(WorldSession* session, std::string_view name)
                 SendCommandResult(session, GUILD_COMMAND_REMOVE, ERR_GUILD_RANK_TOO_HIGH_S, name);
             else
             {
+                // Copy values since everything will be deleted in DeleteMember().
                 ObjectGuid guid = member->GetGUID();
+                std::string memberName = member->GetName();
+
                 // After call to DeleteMember pointer to member becomes invalid
                 DeleteMember(guid, false, true);
                 _LogEvent(GUILD_EVENT_LOG_UNINVITE_PLAYER, player->GetGUID(), guid);
-                _BroadcastEvent(GE_REMOVED, ObjectGuid::Empty, member->GetName(), player->GetName());
+                _BroadcastEvent(GE_REMOVED, ObjectGuid::Empty, memberName, player->GetName());
             }
         }
     }

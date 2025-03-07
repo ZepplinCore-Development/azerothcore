@@ -85,7 +85,7 @@ void WorldSession::HandleGroupInviteOpcode(WorldPacket& recvData)
         return;
     }
 
-    if (!sScriptMgr->CanGroupInvite(invitingPlayer, membername))
+    if (!sScriptMgr->OnPlayerCanGroupInvite(invitingPlayer, membername))
         return;
 
     if (invitingPlayer->IsSpectator() || invitedPlayer->IsSpectator())
@@ -230,7 +230,7 @@ void WorldSession::HandleGroupAcceptOpcode(WorldPacket& recvData)
         return;
     }
 
-    if (!sScriptMgr->CanGroupAccept(GetPlayer(), group))
+    if (!sScriptMgr->OnPlayerCanGroupAccept(GetPlayer(), group))
         return;
 
     if (group->GetLeaderGUID() == GetPlayer()->GetGUID())
@@ -1160,7 +1160,7 @@ void WorldSession::HandleGroupSwapSubGroupOpcode(WorldPacket& recv_data)
     ObjectGuid guid1 = getGuid(playerName1);
     ObjectGuid guid2 = getGuid(playerName2);
 
-    if(!guid1 || !guid2)
+    if (!guid1 || !guid2)
     {
         SendPartyResult(PARTY_OP_SWAP, playerName1, ERR_GROUP_SWAP_FAILED);
         return;

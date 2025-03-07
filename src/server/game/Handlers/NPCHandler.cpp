@@ -29,7 +29,6 @@
 #include "ScriptMgr.h"
 #include "SpellInfo.h"
 #include "SpellMgr.h"
-#include "UpdateMask.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
 #include <cmath>
@@ -905,7 +904,7 @@ void WorldSession::HandleRepairItemOpcode(WorldPacket& recvData)
     // reputation discount
     float discountMod = _player->GetReputationPriceDiscount(unit);
 
-    sScriptMgr->OnBeforePlayerDurabilityRepair(_player, npcGUID, itemGUID, discountMod, guildBank);
+    sScriptMgr->OnPlayerBeforeDurabilityRepair(_player, npcGUID, itemGUID, discountMod, guildBank);
 
     if (itemGUID)
     {

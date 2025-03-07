@@ -23,6 +23,8 @@
 #include "DBCEnums.h"
 #include "GameObject.h"
 #include "SharedDefines.h"
+#include "World.h"
+#include "WorldStatePackets.h"
 
 class Creature;
 class GameObject;
@@ -47,11 +49,15 @@ struct GraveyardStruct;
 
 enum BattlegroundDesertionType : uint8
 {
-    BG_DESERTION_TYPE_LEAVE_BG          = 0, // player leaves the BG
-    BG_DESERTION_TYPE_OFFLINE           = 1, // player is kicked from BG because offline
-    BG_DESERTION_TYPE_LEAVE_QUEUE       = 2, // player is invited to join and refuses to do it
-    BG_DESERTION_TYPE_NO_ENTER_BUTTON   = 3, // player is invited to join and do nothing (time expires)
-    BG_DESERTION_TYPE_INVITE_LOGOUT     = 4, // player is invited to join and logs out
+    BG_DESERTION_TYPE_LEAVE_BG           = 0, // player leaves the BG
+    BG_DESERTION_TYPE_OFFLINE            = 1, // player is kicked from BG because offline
+    BG_DESERTION_TYPE_LEAVE_QUEUE        = 2, // player is invited to join and refuses to do it
+    BG_DESERTION_TYPE_NO_ENTER_BUTTON    = 3, // player is invited to join and do nothing (time expires)
+    BG_DESERTION_TYPE_INVITE_LOGOUT      = 4, // player is invited to join and logs out
+    ARENA_DESERTION_TYPE_LEAVE_BG        = 5, // player leaves the Arena
+    ARENA_DESERTION_TYPE_LEAVE_QUEUE     = 6, // player is invited to join arena and refuses to do it
+    ARENA_DESERTION_TYPE_NO_ENTER_BUTTON = 7, // player is invited to join arena and do nothing (time expires)
+    ARENA_DESERTION_TYPE_INVITE_LOGOUT   = 8, // player is invited to join arena and logs out
 };
 
 enum BattlegroundMaps
@@ -333,8 +339,20 @@ public:
     [[nodiscard]] uint32 GetMinLevel() const          { return m_LevelMin; }
     [[nodiscard]] uint32 GetMaxLevel() const          { return m_LevelMax; }
 
+    [[nodiscard]] bool isTemplate() const             { return m_IsTemplate; }
+    [[nodiscard]] bool isMaxLevel() const
+    {
+        // NOTE: this only works when the BG is not a template but the real BG
+        auto maxPlayerLevel = sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL);
+        return GetMinLevel() <= maxPlayerLevel && maxPlayerLevel <= GetMaxLevel();
+    }
+
     [[nodiscard]] uint32 GetMaxPlayersPerTeam() const { return m_MaxPlayersPerTeam; }
-    [[nodiscard]] uint32 GetMinPlayersPerTeam() const { return m_MinPlayersPerTeam; }
+    [[nodiscard]] uint32 GetMinPlayersPerTeam() const
+    {
+        auto lowLevelsOverride = sWorld->getIntConfig(CONFIG_BATTLEGROUND_OVERRIDE_LOWLEVELS_MINPLAYERS);
+        return (lowLevelsOverride && !isTemplate() && !isMaxLevel() && !isArena()) ? lowLevelsOverride : m_MinPlayersPerTeam;
+    }
 
     [[nodiscard]] int32 GetStartDelayTime() const     { return m_StartDelayTime; }
     [[nodiscard]] uint8 GetArenaType() const          { return m_ArenaType; }
@@ -440,7 +458,7 @@ public:
 
     // Packet Transfer
     // method that should fill worldpacket with actual world states (not yet implemented for all battlegrounds!)
-    virtual void FillInitialWorldStates(WorldPacket& /*data*/) { }
+    virtual void FillInitialWorldStates(WorldPackets::WorldState::InitWorldStates& /*packet*/) { }
     void SendPacketToTeam(TeamId teamId, WorldPacket const* packet, Player* sender = nullptr, bool self = true);
     void SendPacketToAll(WorldPacket const* packet);
     void YellToAll(Creature* creature, const char* text, uint32 language);
@@ -541,8 +559,6 @@ public:
 
     void DoorOpen(uint32 type);
     void DoorClose(uint32 type);
-    //to be removed
-    const char* GetAcoreString(int32 entry);
 
     virtual bool HandlePlayerUnderMap(Player* /*player*/) { return false; }
 
@@ -654,6 +670,7 @@ private:
     bool   _InBGFreeSlotQueue{ false };                // used to make sure that BG is only once inserted into the BattlegroundMgr.BGFreeSlotQueue[bgTypeId] deque
     bool   m_SetDeleteThis;                             // used for safe deletion of the bg after end / all players leave
     bool   m_IsArena;
+    bool   m_IsTemplate;
     PvPTeamId m_WinnerId;
     int32  m_StartDelayTime;
     bool   m_IsRated;                                   // is this battle rated?

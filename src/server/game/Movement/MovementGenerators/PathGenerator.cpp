@@ -35,7 +35,7 @@ PathGenerator::PathGenerator(WorldObject const* owner) :
     memset(_pathPolyRefs, 0, sizeof(_pathPolyRefs));
 
     uint32 mapId = _source->GetMapId();
-    //if (DisableMgr::IsPathfindingEnabled(_sourceUnit->FindMap()))
+    //if (sDisableMgr->IsPathfindingEnabled(_sourceUnit->FindMap()))
     {
         MMAP::MMapMgr* mmap = MMAP::MMapFactory::createOrGetMMapMgr();
         _navMesh = mmap->GetNavMesh(mapId);
@@ -636,7 +636,7 @@ void PathGenerator::CreateFilter()
     uint16 includeFlags = 0;
     uint16 excludeFlags = 0;
 
-    if (_source->GetTypeId() == TYPEID_UNIT)
+    if (_source->IsCreature())
     {
         Creature* creature = (Creature*)_source;
         if (creature->CanWalk())

@@ -343,9 +343,9 @@ void CreatureTextMgr::SendNonChatPacket(WorldObject* source, WorldPacket const* 
         case CHAT_MSG_MONSTER_WHISPER:
         case CHAT_MSG_RAID_BOSS_WHISPER:
             {
-                if (range == TEXT_RANGE_NORMAL)//ignores team and gmOnly
+                if (range == TEXT_RANGE_NORMAL) // ignores team and GM only
                 {
-                    if (!target || target->GetTypeId() != TYPEID_PLAYER)
+                    if (!target || !target->IsPlayer())
                         return;
 
                     target->ToPlayer()->GetSession()->SendPacket(data);
@@ -387,8 +387,8 @@ void CreatureTextMgr::SendNonChatPacket(WorldObject* source, WorldPacket const* 
             }
         case TEXT_RANGE_WORLD:
             {
-                SessionMap const& smap = sWorld->GetAllSessions();
-                for (SessionMap::const_iterator itr = smap.begin(); itr != smap.end(); ++itr)
+                WorldSessionMgr::SessionMap const& sessionMap = sWorldSessionMgr->GetAllSessions();
+                for (WorldSessionMgr::SessionMap::const_iterator itr = sessionMap.begin(); itr != sessionMap.end(); ++itr)
                     if (Player* player = itr->second->GetPlayer())
                         if ((teamId == TEAM_NEUTRAL || player->GetTeamId() == teamId) && (!gmOnly || player->IsGameMaster()))
                             player->GetSession()->SendPacket(data);

@@ -33,7 +33,6 @@
 #include "LootMgr.h"
 #include "ObjectMgr.h"
 #include "Opcodes.h"
-#include "OutdoorPvPMgr.h"
 #include "Pet.h"
 #include "Player.h"
 #include "PoolMgr.h"
@@ -48,6 +47,7 @@
 #include "WaypointMovementGenerator.h"
 #include "World.h"
 #include "WorldPacket.h"
+#include "WorldSessionMgr.h"
 
 /// @todo: this import is not necessary for compilation and marked as unused by the IDE
 //  however, for some reasons removing it would cause a damn linking issue
@@ -220,9 +220,6 @@ bool AssistDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
 {
     if (Unit* victim = ObjectAccessor::GetUnit(*m_owner, m_victim))
     {
-        // Initialize last damage timer if it doesn't exist
-        m_owner->SetLastDamagedTime(GameTime::GetGameTime().count() + MAX_AGGRO_RESET_TIME);
-
         while (!m_assistants.empty())
         {
             Creature* assistant = ObjectAccessor::GetCreature(*m_owner, *m_assistants.begin());
@@ -233,9 +230,14 @@ bool AssistDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)
                 assistant->SetNoCallAssistance(true);
                 assistant->CombatStart(victim);
                 if (assistant->IsAIEnabled)
+                {
                     assistant->AI()->AttackStart(victim);
 
-                assistant->SetLastDamagedTimePtr(m_owner->GetLastDamagedTimePtr());
+                    // When nearby mobs aggro from another mob's initial call for assistance
+                    // their leash timers become linked and attacking one will keep the rest from evading.
+                    if (assistant->GetVictim())
+                        assistant->SetLastLeashExtensionTimePtr(m_owner->GetLastLeashExtensionTimePtr());
+                }
             }
         }
     }
@@ -272,7 +274,7 @@ Creature::Creature(bool isWorldObject): Unit(isWorldObject), MovableMapObject(),
     m_transportCheckTimer(1000), lootPickPocketRestoreTime(0), m_combatPulseTime(0), m_combatPulseDelay(0), m_reactState(REACT_AGGRESSIVE), m_defaultMovementType(IDLE_MOTION_TYPE),
     m_spawnId(0), m_equipmentId(0), m_originalEquipmentId(0), m_AlreadyCallAssistance(false),
     m_AlreadySearchedAssistance(false), m_regenHealth(true), m_regenPower(true), m_AI_locked(false), m_meleeDamageSchoolMask(SPELL_SCHOOL_MASK_NORMAL), m_originalEntry(0), m_moveInLineOfSightDisabled(false), m_moveInLineOfSightStrictlyDisabled(false),
-    m_homePosition(), m_transportHomePosition(), m_creatureInfo(nullptr), m_creatureData(nullptr), m_detectionDistance(20.0f), m_waypointID(0), m_path_id(0), m_formation(nullptr), _lastDamagedTime(nullptr), m_cannotReachTimer(0),
+    m_homePosition(), m_transportHomePosition(), m_creatureInfo(nullptr), m_creatureData(nullptr), m_detectionDistance(20.0f),_sparringPct(0.0f), m_waypointID(0), m_path_id(0), m_formation(nullptr), m_lastLeashExtensionTime(nullptr), m_cannotReachTimer(0),
     _isMissingSwimmingFlagOutOfCombat(false), m_assistanceTimer(0), _playerDamageReq(0), _damagedByPlayer(false), _isCombatMovementAllowed(true)
 {
     m_regenTimer = CREATURE_REGEN_INTERVAL;
@@ -285,7 +287,9 @@ Creature::Creature(bool isWorldObject): Unit(isWorldObject), MovableMapObject(),
         m_ProhibitSchoolTime[i] = 0;
 
     m_CreatureSpellCooldowns.clear();
-    DisableReputationGain = false;
+
+    DisableReputationReward = false;
+    DisableLootReward = false;
 
     m_SightDistance = sWorld->getFloatConfig(CONFIG_SIGHT_MONSTER);
     m_CombatDistance = 0.0f;
@@ -522,6 +526,8 @@ bool Creature::InitEntry(uint32 Entry, const CreatureData* data)
 
     SetFloatValue(UNIT_FIELD_HOVERHEIGHT, cinfo->HoverHeight);
 
+    SetCanDualWield(cinfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_USE_OFFHAND_ATTACK));
+
     // checked at loading
     m_defaultMovementType = MovementGeneratorType(cinfo->MovementType);
     if (!m_wanderDistance && m_defaultMovementType == RANDOM_MOTION_TYPE)
@@ -551,7 +557,7 @@ bool Creature::UpdateEntry(uint32 Entry, const CreatureData* data, bool changele
     uint32 npcflag, unit_flags, dynamicflags;
     ObjectMgr::ChooseCreatureFlags(cInfo, npcflag, unit_flags, dynamicflags, data);
 
-    if (cInfo->flags_extra & CREATURE_FLAG_EXTRA_WORLDEVENT)
+    if (cInfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_WORLDEVENT))
         ReplaceAllNpcFlags(NPCFlags(npcflag | sGameEventMgr->GetNPCFlag(this)));
     else
         ReplaceAllNpcFlags(NPCFlags(npcflag));
@@ -565,6 +571,8 @@ bool Creature::UpdateEntry(uint32 Entry, const CreatureData* data, bool changele
     ReplaceAllUnitFlags2(UnitFlags2(cInfo->unit_flags2));
 
     ReplaceAllDynamicFlags(dynamicflags);
+
+    SetCanDualWield(cInfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_USE_OFFHAND_ATTACK));
 
     SetAttackTime(BASE_ATTACK,   cInfo->BaseAttackTime);
     SetAttackTime(OFF_ATTACK,    cInfo->BaseAttackTime);
@@ -603,6 +611,8 @@ bool Creature::UpdateEntry(uint32 Entry, const CreatureData* data, bool changele
     SetCanModifyStats(true);
     UpdateAllStats();
 
+    LoadSparringPct();
+
     // checked and error show at loading templates
     if (FactionTemplateEntry const* factionTemplate = sFactionTemplateStore.LookupEntry(cInfo->faction))
     {
@@ -628,7 +638,7 @@ bool Creature::UpdateEntry(uint32 Entry, const CreatureData* data, bool changele
 
     InitializeReactState();
 
-    if (!IsPet() && cInfo->flags_extra & CREATURE_FLAG_EXTRA_NO_TAUNT)
+    if (!IsPet() && cInfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_NO_TAUNT))
     {
         ApplySpellImmune(0, IMMUNITY_STATE, SPELL_AURA_MOD_TAUNT, true);
         ApplySpellImmune(0, IMMUNITY_EFFECT, SPELL_EFFECT_ATTACK_ME, true);
@@ -1053,7 +1063,7 @@ void Creature::DoFleeToGetAssistance()
     if (!GetVictim())
         return;
 
-    if (HasAuraType(SPELL_AURA_PREVENTS_FLEEING))
+    if (HasPreventsFleeingAura())
         return;
 
     float radius = sWorld->getFloatConfig(CONFIG_CREATURE_FAMILY_FLEE_ASSISTANCE_RADIUS);
@@ -1184,24 +1194,27 @@ bool Creature::Create(ObjectGuid::LowType guidlow, Map* map, uint32 phaseMask, u
     }
 
     LoadCreaturesAddon();
+    LoadSparringPct();
 
     //! Need to be called after LoadCreaturesAddon - MOVEMENTFLAG_HOVER is set there
     m_positionZ += GetHoverHeight();
 
     LastUsedScriptID = GetScriptId();
 
-    if (IsSpiritHealer() || IsSpiritGuide() || (GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_GHOST_VISIBILITY))
+    if (IsSpiritHealer() || IsSpiritGuide() || HasFlagsExtra(CREATURE_FLAG_EXTRA_GHOST_VISIBILITY))
     {
         m_serverSideVisibility.SetValue(SERVERSIDE_VISIBILITY_GHOST, GHOST_VISIBILITY_GHOST);
         m_serverSideVisibilityDetect.SetValue(SERVERSIDE_VISIBILITY_GHOST, GHOST_VISIBILITY_GHOST);
     }
     else if (cinfo->type_flags & CREATURE_TYPE_FLAG_VISIBLE_TO_GHOSTS) // Xinef: Add ghost visibility for ghost units
+    {
         m_serverSideVisibility.SetValue(SERVERSIDE_VISIBILITY_GHOST, GHOST_VISIBILITY_ALIVE | GHOST_VISIBILITY_GHOST);
-
+        m_serverSideVisibilityDetect.SetValue(SERVERSIDE_VISIBILITY_GHOST, GHOST_VISIBILITY_ALIVE | GHOST_VISIBILITY_GHOST);
+    }
     if (Entry == VISUAL_WAYPOINT)
         SetVisible(false);
 
-    if (GetCreatureTemplate()->flags_extra & CREATURE_FLAG_EXTRA_IGNORE_PATHFINDING)
+    if (HasFlagsExtra(CREATURE_FLAG_EXTRA_IGNORE_PATHFINDING))
         AddUnitState(UNIT_STATE_IGNORE_PATHFINDING);
 
     return true;
@@ -1869,7 +1882,7 @@ bool Creature::IsInvisibleDueToDespawn() const
     if (Unit::IsInvisibleDueToDespawn())
         return true;
 
-    if (IsAlive() || m_corpseRemoveTime > GameTime::GetGameTime().count())
+    if (IsAlive() || isDying() || m_corpseRemoveTime > GameTime::GetGameTime().count())
         return false;
 
     return true;
@@ -1904,7 +1917,7 @@ bool Creature::CanStartAttack(Unit const* who) const
         return false;
 
     // This set of checks is should be done only for creatures
-    if ((IsImmuneToNPC() && who->GetTypeId() != TYPEID_PLAYER) ||      // flag is valid only for non player characters
+    if ((IsImmuneToNPC() && !who->IsPlayer()) ||      // flag is valid only for non player characters
         (IsImmuneToPC() && who->IsPlayer()))         // immune to PC and target is a player, return false
     {
         return false;
@@ -1915,7 +1928,7 @@ bool Creature::CanStartAttack(Unit const* who) const
             return false;
 
     // Do not attack non-combat pets
-    if (who->GetTypeId() == TYPEID_UNIT && who->GetCreatureType() == CREATURE_TYPE_NON_COMBAT_PET)
+    if (who->IsCreature() && who->GetCreatureType() == CREATURE_TYPE_NON_COMBAT_PET)
         return false;
 
     if (!CanFly() && (GetDistanceZ(who) > CREATURE_Z_ATTACK_RANGE + m_CombatDistance))                    // too much Z difference, skip very costy vmap calculations here
@@ -1961,10 +1974,9 @@ void Creature::setDeathState(DeathState state, bool despawn)
 
     if (state == DeathState::JustDied)
     {
-        _lastDamagedTime.reset();
-
         m_corpseRemoveTime = GameTime::GetGameTime().count() + m_corpseDelay;
-        m_respawnTime = GameTime::GetGameTime().count() + m_respawnDelay + m_corpseDelay;
+        uint32 dynamicRespawnDelay = GetMap()->ApplyDynamicModeRespawnScaling(this, m_respawnDelay);
+        m_respawnTime = GameTime::GetGameTime().count() + dynamicRespawnDelay + m_corpseDelay;
 
         // always save boss respawn time at death to prevent crash cheating
         if (GetMap()->IsDungeon() || isWorldBoss() || GetCreatureTemplate()->rank >= CREATURE_ELITE_ELITE)
@@ -2019,6 +2031,8 @@ void Creature::setDeathState(DeathState state, bool despawn)
 
         Motion_Initialize();
         LoadCreaturesAddon(true);
+        LoadSparringPct();
+
         if (GetCreatureData() && GetPhaseMask() != GetCreatureData()->phaseMask)
             SetPhaseMask(GetCreatureData()->phaseMask, false);
     }
@@ -2091,6 +2105,7 @@ void Creature::Respawn(bool force)
             loot.clear();
             SelectLevel();
 
+            m_respawnedTime = GameTime::GetGameTime().count();
             setDeathState(DeathState::JustRespawned);
 
             // MDic - Acidmanifesto: Do not override transform auras
@@ -2122,7 +2137,6 @@ void Creature::Respawn(bool force)
             //Re-initialize reactstate that could be altered by movementgenerators
             InitializeReactState();
 
-            m_respawnedTime = GameTime::GetGameTime().count();
         }
         m_respawnedTime = GameTime::GetGameTime().count();
         // xinef: relocate notifier, fixes npc appearing in corpse position after forced respawn (instead of spawn)
@@ -2162,12 +2176,8 @@ void Creature::ForcedDespawn(uint32 timeMSToDespawn, Seconds forceRespawnTimer)
     RemoveCorpse(true);
 
     if (forceRespawnTimer > Seconds::zero())
-    {
         if (GetMap())
-        {
             GetMap()->ScheduleCreatureRespawn(GetGUID(), forceRespawnTimer);
-        }
-    }
 }
 
 void Creature::DespawnOrUnsummon(Milliseconds msTimeToDespawn /*= 0*/, Seconds forcedRespawnTimer)
@@ -2190,7 +2200,7 @@ void Creature::DespawnOnEvade(Seconds respawnDelay)
 
     if (TempSummon* whoSummon = ToTempSummon())
     {
-        LOG_WARN("entities.unit", "DespawnOnEvade called on a temporary summon.");
+        GetMap()->ScheduleCreatureRespawn(GetGUID(), respawnDelay, GetHomePosition());
         whoSummon->UnSummon();
         return;
     }
@@ -2498,7 +2508,7 @@ bool Creature::CanAssistTo(Unit const* u, Unit const* enemy, bool checkfaction /
         return false;
 
     // pussywizard: or if enemy is in evade mode
-    if (enemy && enemy->GetTypeId() == TYPEID_UNIT && enemy->ToCreature()->IsInEvadeMode())
+    if (enemy && enemy->IsCreature() && enemy->ToCreature()->IsInEvadeMode())
         return false;
 
     // we don't need help from non-combatant ;)
@@ -2636,11 +2646,11 @@ bool Creature::CanCreatureAttack(Unit const* victim, bool skipDistCheck) const
         return false;
 
     // pussywizard: or if enemy is in evade mode
-    if (victim->GetTypeId() == TYPEID_UNIT && victim->ToCreature()->IsInEvadeMode())
+    if (victim->IsCreature() && victim->ToCreature()->IsInEvadeMode())
         return false;
 
     // cannot attack if is during 5 second grace period, unless being attacked
-    if (m_respawnedTime && (GameTime::GetGameTime().count() - m_respawnedTime) < 5 && !GetLastDamagedTime())
+    if (m_respawnedTime && (GameTime::GetGameTime().count() - m_respawnedTime) < 5 && !IsEngagedBy(victim))
     {
         return false;
     }
@@ -2656,9 +2666,15 @@ bool Creature::CanCreatureAttack(Unit const* victim, bool skipDistCheck) const
         if (GetMap()->IsDungeon())
             return true;
 
+        float visibility = std::max<float>(GetVisibilityRange(), victim->GetVisibilityRange());
+
+        // if outside visibility
+        if (!IsWithinDist(victim, visibility))
+            return false;
+
         // pussywizard: don't check distance to home position if recently damaged (allow kiting away from spawnpoint!)
         // xinef: this should include taunt auras
-        if (!isWorldBoss() && (GetLastDamagedTime() > GameTime::GetGameTime().count() || HasAuraType(SPELL_AURA_MOD_TAUNT)))
+        if (!isWorldBoss() && (GetLastLeashExtensionTime() + 12 > GameTime::GetGameTime().count() || HasTauntAura()))
             return true;
     }
 
@@ -2666,10 +2682,13 @@ bool Creature::CanCreatureAttack(Unit const* victim, bool skipDistCheck) const
         return true;
 
     // xinef: added size factor for huge npcs
-    float dist = std::min<float>(GetMap()->GetVisibilityRange() + GetObjectSize() * 2, 150.0f);
+    float dist = std::min<float>(GetDetectionRange() + GetObjectSize() * 2, 150.0f);
 
     if (Unit* unit = GetCharmerOrOwner())
+    {
+        dist = std::min<float>(GetMap()->GetVisibilityRange() + GetObjectSize() * 2, 150.0f);
         return victim->IsWithinDist(unit, dist);
+    }
     else
     {
         // to prevent creatures in air ignore attacks because distance is already too high...
@@ -2783,12 +2802,24 @@ bool Creature::LoadCreaturesAddon(bool reload)
     return true;
 }
 
+void Creature::LoadSparringPct()
+{
+    ObjectGuid::LowType spawnId = GetSpawnId();
+    auto const& sparringData = sObjectMgr->GetSparringData();
+
+    auto itr = sparringData.find(spawnId);
+    if (itr != sparringData.end() && !itr->second.empty())
+    {
+        _sparringPct = itr->second[0];
+    }
+}
+
 /// Send a message to LocalDefense channel for players opposition team in the zone
 void Creature::SendZoneUnderAttackMessage(Player* attacker)
 {
     WorldPacket data(SMSG_ZONE_UNDER_ATTACK, 4);
     data << (uint32)GetAreaId();
-    sWorld->SendGlobalMessage(&data, nullptr, (attacker->GetTeamId() == TEAM_ALLIANCE ? TEAM_HORDE : TEAM_ALLIANCE));
+    sWorldSessionMgr->SendGlobalMessage(&data, nullptr, (attacker->GetTeamId() == TEAM_ALLIANCE ? TEAM_HORDE : TEAM_ALLIANCE));
 }
 
 /**
@@ -3151,7 +3182,7 @@ bool Creature::IsDungeonBoss() const
         return false;
 
     CreatureTemplate const* cinfo = sObjectMgr->GetCreatureTemplate(GetEntry());
-    return cinfo && (cinfo->flags_extra & CREATURE_FLAG_EXTRA_DUNGEON_BOSS);
+    return cinfo && cinfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_DUNGEON_BOSS);
 }
 
 bool Creature::IsImmuneToKnockback() const
@@ -3160,7 +3191,15 @@ bool Creature::IsImmuneToKnockback() const
         return false;
 
     CreatureTemplate const* cinfo = sObjectMgr->GetCreatureTemplate(GetEntry());
-    return cinfo && (cinfo->flags_extra & CREATURE_FLAG_EXTRA_IMMUNITY_KNOCKBACK);
+    return cinfo && cinfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_IMMUNITY_KNOCKBACK);
+}
+
+bool Creature::HasWeapon(WeaponAttackType type) const
+{
+    const uint8 slot = uint8(type);
+    ItemEntry const* item = sItemStore.LookupEntry(GetUInt32Value(UNIT_VIRTUAL_ITEM_SLOT_ID + slot));
+
+    return ((item && item->ClassID == ITEM_CLASS_WEAPON) || (type == OFF_ATTACK && CanDualWield()));
 }
 
 /**
@@ -3422,7 +3461,7 @@ void Creature::UpdateMovementFlags()
         return;
 
     // Creatures with CREATURE_FLAG_EXTRA_NO_MOVE_FLAGS_UPDATE should control MovementFlags in your own scripts
-    if (info->flags_extra & CREATURE_FLAG_EXTRA_NO_MOVE_FLAGS_UPDATE)
+    if (info->HasFlagsExtra(CREATURE_FLAG_EXTRA_NO_MOVE_FLAGS_UPDATE))
         return;
 
     float ground = GetFloorZ();
@@ -3437,14 +3476,14 @@ void Creature::UpdateMovementFlags()
         else
             SetDisableGravity(true);
 
-        if (!HasAuraType(SPELL_AURA_HOVER))
+        if (!HasHoverAura())
             SetHover(false);
     }
     else
     {
         SetCanFly(false);
         SetDisableGravity(false);
-        if (IsAlive() && (CanHover() || HasAuraType(SPELL_AURA_HOVER)))
+        if (IsAlive() && (CanHover() || HasHoverAura()))
             SetHover(true);
     }
 
@@ -3471,7 +3510,7 @@ void Creature::UpdateMovementFlags()
 
 float Creature::GetNativeObjectScale() const
 {
-    return GetCreatureTemplate()->scale;
+    return ObjectMgr::ChooseDisplayId(GetCreatureTemplate())->DisplayScale;
 }
 
 void Creature::SetObjectScale(float scale)
@@ -3600,10 +3639,10 @@ float Creature::GetAttackDistance(Unit const* player) const
     if (creatureLevel + 5 <= sWorld->getIntConfig(CONFIG_MAX_PLAYER_LEVEL))
     {
         // detect range auras
-        retDistance += static_cast<float>( GetTotalAuraModifier(SPELL_AURA_MOD_DETECT_RANGE) );
+        retDistance += static_cast<float>( GetTotalAuraModifier(SPELL_AURA_MOD_DETECT_RANGE));
 
         // detected range auras
-        retDistance += static_cast<float>( player->GetTotalAuraModifier(SPELL_AURA_MOD_DETECTED_RANGE) );
+        retDistance += static_cast<float>( player->GetTotalAuraModifier(SPELL_AURA_MOD_DETECTED_RANGE));
     }
 
     // "Minimum Aggro Radius for a mob seems to be combat range (5 yards)"
@@ -3666,35 +3705,31 @@ bool Creature::IsNotReachableAndNeedRegen() const
     return false;
 }
 
-time_t Creature::GetLastDamagedTime() const
+std::shared_ptr<time_t> const& Creature::GetLastLeashExtensionTimePtr() const
 {
-    if (!_lastDamagedTime)
-        return time_t(0);
-
-    return *_lastDamagedTime;
+    if (m_lastLeashExtensionTime == nullptr)
+        m_lastLeashExtensionTime = std::make_shared<time_t>(GameTime::GetGameTime().count());
+    return m_lastLeashExtensionTime;
 }
 
-std::shared_ptr<time_t> const& Creature::GetLastDamagedTimePtr() const
+void Creature::SetLastLeashExtensionTimePtr(std::shared_ptr<time_t> const& timer)
 {
-    return _lastDamagedTime;
+    m_lastLeashExtensionTime = timer;
 }
 
-void Creature::SetLastDamagedTime(time_t val)
+void Creature::ClearLastLeashExtensionTimePtr()
 {
-    if (val > 0)
-    {
-        if (_lastDamagedTime)
-            *_lastDamagedTime = val;
-        else
-            _lastDamagedTime = std::make_shared<time_t>(val);
-    }
-    else
-        _lastDamagedTime.reset();
+    m_lastLeashExtensionTime.reset();
 }
 
-void Creature::SetLastDamagedTimePtr(std::shared_ptr<time_t> const& val)
+time_t Creature::GetLastLeashExtensionTime() const
 {
-    _lastDamagedTime = val;
+    return *GetLastLeashExtensionTimePtr();
+}
+
+void Creature::UpdateLeashExtensionTime()
+{
+    (*GetLastLeashExtensionTimePtr()) = GameTime::GetGameTime().count();
 }
 
 bool Creature::CanPeriodicallyCallForAssistance() const
@@ -3782,7 +3817,7 @@ void Creature::ModifyThreatPercentTemp(Unit* victim, int32 percent, Milliseconds
 
 bool Creature::IsDamageEnoughForLootingAndReward() const
 {
-    return (m_creatureInfo->flags_extra & CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ) || (_playerDamageReq == 0 && _damagedByPlayer);
+    return m_creatureInfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_NO_PLAYER_DAMAGE_REQ) || (_playerDamageReq == 0 && _damagedByPlayer);
 }
 
 void Creature::LowerPlayerDamageReq(uint32 unDamage, bool damagedByPlayer /*= true*/)

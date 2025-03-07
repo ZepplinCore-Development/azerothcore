@@ -131,7 +131,6 @@ public:
     {
         explicit boss_four_horsemenAI(Creature* c) : BossAI(c, BOSS_HORSEMAN)
         {
-            pInstance = me->GetInstanceScript();
             switch (me->GetEntry())
             {
                 case NPC_SIR_ZELIEK:
@@ -150,14 +149,13 @@ public:
         }
 
         EventMap events;
-        InstanceScript* pInstance;
         uint8 currentWaypoint{};
         uint8 movementPhase{};
         uint8 horsemanId;
 
         void MoveToCorner()
         {
-            switch(me->GetEntry())
+            switch (me->GetEntry())
             {
                 case NPC_THANE_KORTHAZZ:
                     currentWaypoint = 0;
@@ -202,16 +200,6 @@ public:
             else
             {
                 events.RescheduleEvent(EVENT_SECONDARY_SPELL, 15s);
-            }
-            if (pInstance)
-            {
-                if (GameObject* go = me->GetMap()->GetGameObject(pInstance->GetGuidData(DATA_HORSEMEN_GATE)))
-                {
-                    if (pInstance->GetBossState(BOSS_GOTHIK) == DONE)
-                    {
-                        go->SetGoState(GO_STATE_ACTIVE);
-                    }
-                }
             }
         }
 
@@ -258,40 +246,23 @@ public:
 
         void KilledUnit(Unit* who) override
         {
-            if (who->GetTypeId() != TYPEID_PLAYER)
+            if (!who->IsPlayer())
                 return;
 
             Talk(SAY_SLAY);
-            if (pInstance)
-            {
-                pInstance->SetData(DATA_IMMORTAL_FAIL, 0);
-            }
+            instance->StorePersistentData(PERSISTENT_DATA_IMMORTAL_FAIL, 1);
         }
 
         void JustDied(Unit*  killer) override
         {
             BossAI::JustDied(killer);
-            if (pInstance)
-            {
-                if (pInstance->GetBossState(BOSS_HORSEMAN) == DONE)
-                {
-                    if (!me->GetMap()->GetPlayers().IsEmpty())
-                    {
-                        if (Player* player = me->GetMap()->GetPlayers().getFirst()->GetSource())
-                        {
-                            if (GameObject* chest = player->SummonGameObject(RAID_MODE(GO_HORSEMEN_CHEST_10, GO_HORSEMEN_CHEST_25), 2514.8f, -2944.9f, 245.55f, 5.51f, 0, 0, 0, 0, 0))
-                            {
-                                chest->SetLootRecipient(me);
-                            }
-                        }
-                    }
-                    if (GameObject* go = me->GetMap()->GetGameObject(pInstance->GetGuidData(DATA_HORSEMEN_GATE)))
-                    {
-                        go->SetGoState(GO_STATE_ACTIVE);
-                    }
-                }
-            }
             Talk(SAY_DEATH);
+
+            if (instance->GetBossState(BOSS_HORSEMAN) == DONE)
+                if (!me->GetMap()->GetPlayers().IsEmpty())
+                    if (Player* player = me->GetMap()->GetPlayers().getFirst()->GetSource())
+                        if (GameObject* chest = player->SummonGameObject(RAID_MODE(GO_HORSEMEN_CHEST_10, GO_HORSEMEN_CHEST_25), 2514.8f, -2944.9f, 245.55f, 5.51f, 0, 0, 0, 0, 0))
+                            chest->SetLootRecipient(me);
         }
 
         void JustEngagedWith(Unit* who) override
@@ -304,13 +275,6 @@ public:
                 movementPhase = MOVE_PHASE_STARTED;
                 me->SetSpeed(MOVE_RUN, me->GetSpeedRate(MOVE_RUN), true);
                 MoveToCorner();
-            }
-            if (pInstance)
-            {
-                if (GameObject* go = me->GetMap()->GetGameObject(pInstance->GetGuidData(DATA_HORSEMEN_GATE)))
-                {
-                    go->SetGoState(GO_STATE_READY);
-                }
             }
         }
 

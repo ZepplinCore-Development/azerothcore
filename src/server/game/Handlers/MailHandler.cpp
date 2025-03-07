@@ -269,7 +269,7 @@ void WorldSession::HandleSendMail(WorldPacket& recvData)
             return;
         }
 
-        if (!sScriptMgr->CanSendMail(player, receiverGuid, mailbox, subject, body, money, COD, item))
+        if (!sScriptMgr->OnPlayerCanSendMail(player, receiverGuid, mailbox, subject, body, money, COD, item))
         {
             player->SendMailResult(0, MAIL_SEND, MAIL_ERR_INTERNAL_ERROR);
             return;
@@ -278,7 +278,7 @@ void WorldSession::HandleSendMail(WorldPacket& recvData)
         items[i] = item;
     }
 
-    if (!items_count && !sScriptMgr->CanSendMail(player, receiverGuid, mailbox, subject, body, money, COD, nullptr))
+    if (!items_count && !sScriptMgr->OnPlayerCanSendMail(player, receiverGuid, mailbox, subject, body, money, COD, nullptr))
     {
         player->SendMailResult(0, MAIL_SEND, MAIL_ERR_INTERNAL_ERROR);
         return;
@@ -319,7 +319,7 @@ void WorldSession::HandleSendMail(WorldPacket& recvData)
             needItemDelay = GetAccountId() != rc_account;
         }
 
-        if( money >= 10 * GOLD )
+        if (money >= 10 * GOLD)
         {
             CleanStringForMysqlQuery(subject);
             CharacterDatabase.Execute("INSERT INTO log_money VALUES({}, {}, \"{}\", \"{}\", {}, \"{}\", {}, \"{}\", NOW(), {})",
@@ -422,14 +422,14 @@ void WorldSession::HandleMailReturnToSender(WorldPacket& recvData)
         for (MailItemInfoVec::iterator itr = m->items.begin(); itr != m->items.end(); ++itr)
         {
             Item* item = player->GetMItem(itr->item_guid);
-            if (item && !sScriptMgr->CanSendMail(player, ObjectGuid(HighGuid::Player, m->sender), mailbox, m->subject, m->body, m->money, m->COD, item))
+            if (item && !sScriptMgr->OnPlayerCanSendMail(player, ObjectGuid(HighGuid::Player, m->sender), mailbox, m->subject, m->body, m->money, m->COD, item))
             {
                 player->SendMailResult(mailId, MAIL_RETURNED_TO_SENDER, MAIL_ERR_INTERNAL_ERROR);
                 return;
             }
         }
     }
-    else if (!sScriptMgr->CanSendMail(player, ObjectGuid(HighGuid::Player, m->sender), mailbox, m->subject, m->body, m->money, m->COD, nullptr))
+    else if (!sScriptMgr->OnPlayerCanSendMail(player, ObjectGuid(HighGuid::Player, m->sender), mailbox, m->subject, m->body, m->money, m->COD, nullptr))
     {
         player->SendMailResult(mailId, MAIL_RETURNED_TO_SENDER, MAIL_ERR_INTERNAL_ERROR);
         return;
@@ -551,7 +551,7 @@ void WorldSession::HandleMailTakeItem(WorldPacket& recvData)
                 .AddMoney(m->COD)
                 .SendMailTo(trans, MailReceiver(sender, m->sender), MailSender(MAIL_NORMAL, m->receiver), MAIL_CHECK_MASK_COD_PAYMENT);
 
-                if( m->COD >= 10 * GOLD )
+                if (m->COD >= 10 * GOLD)
                 {
                     std::string senderName;
                     if (!sCharacterCache->GetCharacterNameByGuid(ObjectGuid(HighGuid::Player, m->sender), senderName))

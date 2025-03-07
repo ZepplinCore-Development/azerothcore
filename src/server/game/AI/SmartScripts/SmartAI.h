@@ -18,7 +18,6 @@
 #ifndef ACORE_SMARTAI_H
 #define ACORE_SMARTAI_H
 
-#include "Common.h"
 #include "Creature.h"
 #include "CreatureAI.h"
 #include "GameObjectAI.h"
@@ -132,7 +131,7 @@ public:
     void IsSummonedBy(WorldObject* summoner) override;
 
     // Called at any Damage to any victim (before damage apply)
-    void DamageDealt(Unit* doneTo, uint32& damage, DamageEffectType damagetyp) override;
+    void DamageDealt(Unit* doneTo, uint32& damage, DamageEffectType damagetyp, SpellSchoolMask damageSchoolMask) override;
 
     // Called when a summoned creature dissapears (UnSommoned)
     void SummonedCreatureDespawn(Creature* unit) override;

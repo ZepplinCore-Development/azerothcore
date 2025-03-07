@@ -464,10 +464,8 @@ public:
             if (!summoner)
                 return;
 
-            if (summoner->GetTypeId() != TYPEID_UNIT)
-            {
+            if (!summoner->IsCreature())
                 return;
-            }
 
             _summonerGuid = summoner->GetGUID();
             me->GetMotionMaster()->MoveFollow(summoner->ToUnit(), 0.0f, 0.0f);
@@ -776,7 +774,7 @@ public:
     {
         // return those not tagged or already under the influence of Aura of Nature
         if (Unit* unit = object->ToUnit())
-            return !(unit->HasAura(SPELL_MARK_OF_NATURE) && !unit->HasAura(SPELL_AURA_OF_NATURE));
+            return !unit->HasAllAuras(SPELL_MARK_OF_NATURE, SPELL_AURA_OF_NATURE);
         return true;
     }
 };

@@ -54,6 +54,8 @@
 #include <boost/algorithm/string.hpp>
 #include <numeric>
 
+#include "ItemEnchantmentMgr.h"
+
 ScriptMapMap sSpellScripts;
 ScriptMapMap sEventScripts;
 ScriptMapMap sWaypointScripts;
@@ -702,7 +704,6 @@ void ObjectMgr::LoadCreatureTemplate(Field* fields, bool triggerHook)
     {
         sScriptMgr->OnAfterDatabaseLoadCreatureTemplates(_creatureTemplateStoreFast);
     }
-
 }
 
 void ObjectMgr::LoadCreatureTemplateModels()
@@ -1650,7 +1651,7 @@ CreatureModel const* ObjectMgr::ChooseDisplayId(CreatureTemplate const* cinfo, C
         if (CreatureModel const* model = cinfo->GetModelWithDisplayId(data->displayid))
             return model;
 
-    if (!(cinfo->flags_extra & CREATURE_FLAG_EXTRA_TRIGGER))
+    if (!cinfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_TRIGGER))
         if (CreatureModel const* model = cinfo->GetRandomValidModel())
             return model;
 
@@ -2232,7 +2233,7 @@ void ObjectMgr::LoadCreatures()
                 data.equipmentId = 0;
             }
         }
-        if ((cInfo->flags_extra & CREATURE_FLAG_EXTRA_INSTANCE_BIND) || (data.id2 && cInfo2->flags_extra & CREATURE_FLAG_EXTRA_INSTANCE_BIND) || (data.id3 && cInfo3->flags_extra & CREATURE_FLAG_EXTRA_INSTANCE_BIND))
+        if (cInfo->HasFlagsExtra(CREATURE_FLAG_EXTRA_INSTANCE_BIND) || (data.id2 && cInfo2->HasFlagsExtra(CREATURE_FLAG_EXTRA_INSTANCE_BIND)) || (data.id3 && cInfo3->HasFlagsExtra(CREATURE_FLAG_EXTRA_INSTANCE_BIND)))
         {
             if (!mapEntry->IsDungeon())
                 LOG_ERROR("sql.sql", "Table `creature` have creature (SpawnId: {} Entries: {}, {}, {}) with a `creature_template`.`flags_extra` in one or more entries including CREATURE_FLAG_EXTRA_INSTANCE_BIND but creature are not in instance.",
@@ -2297,6 +2298,42 @@ void ObjectMgr::LoadCreatures()
     LOG_INFO("server.loading", " ");
 }
 
+void ObjectMgr::LoadCreatureSparring()
+{
+    uint32 oldMSTime = getMSTime();
+
+    QueryResult result = WorldDatabase.Query("SELECT GUID, SparringPCT FROM creature_sparring");
+
+    if (!result)
+    {
+        LOG_WARN("server.loading", ">> Loaded 0 sparring data. DB table `creature_sparring` is empty.");
+        LOG_INFO("server.loading", " ");
+        return;
+    }
+
+    uint32 count = 0;
+    do
+    {
+        Field* fields = result->Fetch();
+
+        ObjectGuid::LowType spawnId     = fields[0].Get<uint32>();
+        float sparringHealthPct         = fields[1].Get<float>();
+
+        if (!sObjectMgr->GetCreatureData(spawnId))
+        {
+            LOG_ERROR("sql.sql", "Entry {} has a record in `creature_sparring` but doesn't exist in `creatures` table");
+            continue;
+        }
+
+        _creatureSparringStore[spawnId].push_back(sparringHealthPct);
+
+        ++count;
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> Loaded {} sparring data in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
+    LOG_INFO("server.loading", " ");
+}
+
 void ObjectMgr::AddCreatureToGrid(ObjectGuid::LowType guid, CreatureData const* data)
 {
     uint8 mask = data->spawnMask;
@@ -2304,8 +2341,8 @@ void ObjectMgr::AddCreatureToGrid(ObjectGuid::LowType guid, CreatureData const* 
     {
         if (mask & 1)
         {
-            CellCoord cellCoord = Acore::ComputeCellCoord(data->posX, data->posY);
-            CellObjectGuids& cell_guids = _mapObjectGuidsStore[MAKE_PAIR32(data->mapid, i)][cellCoord.GetId()];
+            GridCoord gridCoord = Acore::ComputeGridCoord(data->posX, data->posY);
+            CellObjectGuids& cell_guids = _mapObjectGuidsStore[MAKE_PAIR32(data->mapid, i)][gridCoord.GetId()];
             cell_guids.creatures.insert(guid);
         }
     }
@@ -2318,14 +2355,14 @@ void ObjectMgr::RemoveCreatureFromGrid(ObjectGuid::LowType guid, CreatureData co
     {
         if (mask & 1)
         {
-            CellCoord cellCoord = Acore::ComputeCellCoord(data->posX, data->posY);
-            CellObjectGuids& cell_guids = _mapObjectGuidsStore[MAKE_PAIR32(data->mapid, i)][cellCoord.GetId()];
+            GridCoord gridCoord = Acore::ComputeGridCoord(data->posX, data->posY);
+            CellObjectGuids& cell_guids = _mapObjectGuidsStore[MAKE_PAIR32(data->mapid, i)][gridCoord.GetId()];
             cell_guids.creatures.erase(guid);
         }
     }
 }
 
-uint32 ObjectMgr::AddGOData(uint32 entry, uint32 mapId, float x, float y, float z, float o, uint32 spawntimedelay, float rotation0, float rotation1, float rotation2, float rotation3)
+ObjectGuid::LowType ObjectMgr::AddGOData(uint32 entry, uint32 mapId, float x, float y, float z, float o, uint32 spawntimedelay, float rotation0, float rotation1, float rotation2, float rotation3)
 {
     GameObjectTemplate const* goinfo = GetGameObjectTemplate(entry);
     if (!goinfo)
@@ -2376,7 +2413,7 @@ uint32 ObjectMgr::AddGOData(uint32 entry, uint32 mapId, float x, float y, float 
     return spawnId;
 }
 
-uint32 ObjectMgr::AddCreData(uint32 entry, uint32 mapId, float x, float y, float z, float o, uint32 spawntimedelay)
+ObjectGuid::LowType ObjectMgr::AddCreData(uint32 entry, uint32 mapId, float x, float y, float z, float o, uint32 spawntimedelay)
 {
     CreatureTemplate const* cInfo = GetCreatureTemplate(entry);
     if (!cInfo)
@@ -2417,7 +2454,7 @@ uint32 ObjectMgr::AddCreData(uint32 entry, uint32 mapId, float x, float y, float
     AddCreatureToGrid(spawnId, &data);
 
     // Spawn if necessary (loaded grids only)
-    if (!map->Instanceable() && !map->IsRemovalGrid(x, y))
+    if (!map->Instanceable() && map->IsGridLoaded(x, y))
     {
         Creature* creature = new Creature();
         if (!creature->LoadCreatureFromDB(spawnId, map, true, true))
@@ -2607,8 +2644,8 @@ void ObjectMgr::AddGameobjectToGrid(ObjectGuid::LowType guid, GameObjectData con
     {
         if (mask & 1)
         {
-            CellCoord cellCoord = Acore::ComputeCellCoord(data->posX, data->posY);
-            CellObjectGuids& cell_guids = _mapObjectGuidsStore[MAKE_PAIR32(data->mapid, i)][cellCoord.GetId()];
+            GridCoord gridCoord = Acore::ComputeGridCoord(data->posX, data->posY);
+            CellObjectGuids& cell_guids = _mapObjectGuidsStore[MAKE_PAIR32(data->mapid, i)][gridCoord.GetId()];
             cell_guids.gameobjects.insert(guid);
         }
     }
@@ -2621,8 +2658,8 @@ void ObjectMgr::RemoveGameobjectFromGrid(ObjectGuid::LowType guid, GameObjectDat
     {
         if (mask & 1)
         {
-            CellCoord cellCoord = Acore::ComputeCellCoord(data->posX, data->posY);
-            CellObjectGuids& cell_guids = _mapObjectGuidsStore[MAKE_PAIR32(data->mapid, i)][cellCoord.GetId()];
+            GridCoord gridCoord = Acore::ComputeGridCoord(data->posX, data->posY);
+            CellObjectGuids& cell_guids = _mapObjectGuidsStore[MAKE_PAIR32(data->mapid, i)][gridCoord.GetId()];
             cell_guids.gameobjects.erase(guid);
         }
     }
@@ -3035,7 +3072,7 @@ void ObjectMgr::LoadItemTemplates()
             else if (itemTemplate.Spells[1].SpellId != -1)
             {
                 SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(itemTemplate.Spells[1].SpellId);
-                if (!spellInfo && !DisableMgr::IsDisabledFor(DISABLE_TYPE_SPELL, itemTemplate.Spells[1].SpellId, nullptr))
+                if (!spellInfo && !sDisableMgr->IsDisabledFor(DISABLE_TYPE_SPELL, itemTemplate.Spells[1].SpellId, nullptr))
                 {
                     LOG_ERROR("sql.sql", "Item (Entry: {}) has wrong (not existing) spell in spellid_{} ({})", entry, 1 + 1, itemTemplate.Spells[1].SpellId);
                     itemTemplate.Spells[0].SpellId = 0;
@@ -3083,7 +3120,7 @@ void ObjectMgr::LoadItemTemplates()
                 if (itemTemplate.Spells[j].SpellId && itemTemplate.Spells[j].SpellId != -1)
                 {
                     SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(itemTemplate.Spells[j].SpellId);
-                    if (!spellInfo && !DisableMgr::IsDisabledFor(DISABLE_TYPE_SPELL, itemTemplate.Spells[j].SpellId, nullptr))
+                    if (!spellInfo && !sDisableMgr->IsDisabledFor(DISABLE_TYPE_SPELL, itemTemplate.Spells[j].SpellId, nullptr))
                     {
                         LOG_ERROR("sql.sql", "Item (Entry: {}) has wrong (not existing) spell in spellid_{} ({})", entry, j + 1, itemTemplate.Spells[j].SpellId);
                         itemTemplate.Spells[j].SpellId = 0;
@@ -3482,6 +3519,62 @@ void ObjectMgr::LoadVehicleAccessories()
 
     LOG_INFO("server.loading", ">> Loaded {} Vehicle Accessories in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
     LOG_INFO("server.loading", " ");
+}
+
+void ObjectMgr::LoadVehicleSeatAddon()
+{
+    uint32 oldMSTime = getMSTime();
+
+    _vehicleSeatAddonStore.clear();                           // needed for reload case
+
+    uint32 count = 0;
+
+    //                                                0            1                  2             3             4             5             6
+    QueryResult result = WorldDatabase.Query("SELECT `SeatEntry`, `SeatOrientation`, `ExitParamX`, `ExitParamY`, `ExitParamZ`, `ExitParamO`, `ExitParamValue` FROM `vehicle_seat_addon`");
+
+    if (!result)
+    {
+        LOG_ERROR("server.loading", ">> Loaded 0 vehicle seat addons. DB table `vehicle_seat_addon` is empty.");
+        return;
+    }
+
+    do
+    {
+        Field* fields = result->Fetch();
+
+        uint32 seatID = fields[0].Get<uint32>();
+        float orientation = fields[1].Get<float>();
+        float exitX = fields[2].Get<float>();
+        float exitY = fields[3].Get<float>();
+        float exitZ = fields[4].Get<float>();
+        float exitO = fields[5].Get<float>();
+        uint8 exitParam = fields[6].Get<uint8>();
+
+        if (!sVehicleSeatStore.LookupEntry(seatID))
+        {
+            LOG_ERROR("sql.sql", "Table `vehicle_seat_addon`: SeatID: {} does not exist in VehicleSeat.dbc. Skipping entry.", seatID);
+            continue;
+        }
+
+        // Sanitizing values
+        if (orientation > float(M_PI * 2))
+        {
+            LOG_ERROR("sql.sql", "Table `vehicle_seat_addon`: SeatID: {} is using invalid angle offset value ({}). Set Value to 0.", seatID, orientation);
+            orientation = 0.0f;
+        }
+
+        if (exitParam >= AsUnderlyingType(VehicleExitParameters::VehicleExitParamMax))
+        {
+            LOG_ERROR("sql.sql", "Table `vehicle_seat_addon`: SeatID: {} is using invalid exit parameter value ({}). Setting to 0 (none).", seatID, exitParam);
+            continue;
+        }
+
+        _vehicleSeatAddonStore[seatID] = VehicleSeatAddon(orientation, exitX, exitY, exitZ, exitO, exitParam);
+
+        ++count;
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> Loaded {} Vehicle Seat Addon entries in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
 }
 
 void ObjectMgr::LoadPetLevelInfo()
@@ -4523,7 +4616,7 @@ void ObjectMgr::LoadQuests()
     for (QuestMap::iterator iter = _questTemplates.begin(); iter != _questTemplates.end(); ++iter)
     {
         // skip post-loading checks for disabled quests
-        if (DisableMgr::IsDisabledFor(DISABLE_TYPE_QUEST, iter->first, nullptr))
+        if (sDisableMgr->IsDisabledFor(DISABLE_TYPE_QUEST, iter->first, nullptr))
             continue;
 
         Quest* qinfo = iter->second;
@@ -5755,7 +5848,11 @@ void ObjectMgr::LoadPageTextLocales()
     QueryResult result = WorldDatabase.Query("SELECT ID, locale, Text FROM page_text_locale");
 
     if (!result)
+    {
+        LOG_WARN("server.loading", ">> Loaded 0 page texts. DB table `page_text_locale` is empty!");
+        LOG_INFO("server.loading", " ");
         return;
+    }
 
     do
     {
@@ -5783,7 +5880,7 @@ void ObjectMgr::LoadInstanceTemplate()
 
     if (!result)
     {
-        LOG_WARN("server.loading", ">> Loaded 0 instance templates. DB table `page_text` is empty!");
+        LOG_WARN("server.loading", ">> Loaded 0 instance templates. DB table `instance_template` is empty!");
         LOG_INFO("server.loading", " ");
         return;
     }
@@ -8631,7 +8728,7 @@ bool ObjectMgr::LoadModuleStringsLocale()
 std::string const* ObjectMgr::GetModuleString(std::string module, uint32 id, LocaleConstant locale) const
 {
     ModuleString const* ms = GetModuleString(module, id);
-    if (ms->Content.size())
+    if (ms && !ms->Content.empty())
     {
         if (ms->Content.size() > size_t(locale) && !ms->Content[locale].empty())
             return &ms->Content[locale];
@@ -8677,19 +8774,20 @@ bool ObjectMgr::LoadAcoreStrings()
     return true;
 }
 
-char const* ObjectMgr::GetAcoreString(uint32 entry, LocaleConstant locale) const
+std::string ObjectMgr::GetAcoreString(uint32 entry, LocaleConstant locale) const
 {
-    if (AcoreString const* ts = GetAcoreString(entry))
+    AcoreString const* as = GetAcoreString(entry);
+    if (as && !as->Content.empty())
     {
-        if (ts->Content.size() > std::size_t(locale) && !ts->Content[locale].empty())
-            return ts->Content[locale].c_str();
+        if (as->Content.size() > std::size_t(locale) && !as->Content[locale].empty())
+            return as->Content[locale];
 
-        return ts->Content[DEFAULT_LOCALE].c_str();
+        return as->Content[DEFAULT_LOCALE];
     }
 
-    LOG_ERROR("sql.sql", "Acore string entry {} not found in DB.", entry);
-
-    return "<error>";
+    std::string msg = Acore::StringFormat("No entry for acore_string ({}) in DB.", entry);
+    LOG_ERROR("sql.sql", msg);
+    return msg;
 }
 
 void ObjectMgr::LoadFishingBaseSkillLevel()
@@ -8888,7 +8986,7 @@ void ObjectMgr::LoadGameTele()
     LOG_INFO("server.loading", " ");
 }
 
-GameTele const* ObjectMgr::GetGameTele(std::string_view name) const
+GameTele const* ObjectMgr::GetGameTele(std::string_view name, bool exactSearch) const
 {
     // explicit name case
     std::wstring wname;
@@ -8904,7 +9002,7 @@ GameTele const* ObjectMgr::GetGameTele(std::string_view name) const
     {
         if (itr->second.wnameLow == wname)
             return &itr->second;
-        else if (!alt && itr->second.wnameLow.find(wname) != std::wstring::npos)
+        else if (!exactSearch && !alt && itr->second.wnameLow.find(wname) != std::wstring::npos)
             alt = &itr->second;
     }
 
