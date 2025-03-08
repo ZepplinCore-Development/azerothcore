@@ -770,10 +770,10 @@ bool Player::UpdateGatherSkill(uint32 SkillId, uint32 SkillValue,
     uint32 specialLockingBusiness =sWorld->getIntConfig(CONFIG_SKILL_GAIN_CRAFTING);
 
     if(SkillId == SKILL_LOCKPICKING){
-        sScriptMgr->OnUpdateGatheringSkill(this, SkillId, SkillValue, RedLevel + 100, RedLevel + 50, RedLevel + 25, specialLockingBusiness);
+        sScriptMgr->OnPlayerUpdateGatheringSkill(this, SkillId, SkillValue, RedLevel + 100, RedLevel + 50, RedLevel + 25, specialLockingBusiness);
     }
     else {
-        sScriptMgr->OnUpdateGatheringSkill(this, SkillId, SkillValue, RedLevel + 100, RedLevel + 50, RedLevel + 25, gathering_skill_gain);
+        sScriptMgr->OnPlayerUpdateGatheringSkill(this, SkillId, SkillValue, RedLevel + 100, RedLevel + 50, RedLevel + 25, gathering_skill_gain);
     }
 
     // For skinning and Mining chance decrease with level. 1-74 - no decrease,
