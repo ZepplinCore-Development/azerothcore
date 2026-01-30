@@ -7020,7 +7020,31 @@ void Player::ApplyItemObtainSpells(Item* item, bool apply)
         if (apply)
         {
             if (!HasAura(spellId))
-                CastSpell(this, spellId, true, item);
+            {
+                // For EXCLUSIVE groups, skip cast if same-group spell is active
+                // UNLESS the new spell is a higher rank (spell_ranks table).
+                // This lets higher-tier profession tools replace lower-tier ones.
+                SpellInfo const* spellInfo = sSpellMgr->GetSpellInfo(spellId);
+                bool skipCast = false;
+                if (spellInfo)
+                {
+                    for (auto const& appliedAura : GetAppliedAuras())
+                    {
+                        SpellInfo const* existingSpell = appliedAura.second->GetBase()->GetSpellInfo();
+                        SpellGroupStackRule rule = sSpellMgr->CheckSpellGroupStackRules(spellInfo, existingSpell);
+                        if (rule == SPELL_GROUP_STACK_RULE_EXCLUSIVE)
+                        {
+                            // Allow higher rank to replace lower rank
+                            if (spellInfo->IsHighRankOf(existingSpell))
+                                continue;
+                            skipCast = true;
+                            break;
+                        }
+                    }
+                }
+                if (!skipCast)
+                    CastSpell(this, spellId, true, item);
+            }
         }
         else
             RemoveAurasDueToSpell(spellId);
