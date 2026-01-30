@@ -12340,6 +12340,11 @@ float Player::GetReputationPriceDiscount(FactionTemplateEntry const* factionTemp
 {
     float discount = 1.0f;
 
+    if (HasSpell(69044)) // 69044 = Best Deals Anywhere
+    {
+        return 0.8f;
+    }
+
     if (!factionTemplate || !factionTemplate->faction)
     {
         sScriptMgr->OnPlayerGetReputationPriceDiscount(this, factionTemplate, discount);
