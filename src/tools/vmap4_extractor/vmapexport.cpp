@@ -246,6 +246,7 @@ bool scan_patches(char* scanmatch, std::vector<std::string>& pArchiveNames)
     int i;
     char path[512];
 
+    // Numeric patches: patch.MPQ, patch-2.MPQ through patch-99.MPQ
     for (i = 1; i <= 99; i++)
     {
         if (i != 1)
@@ -263,7 +264,36 @@ bool scan_patches(char* scanmatch, std::vector<std::string>& pArchiveNames)
 #endif
         {
             fclose(h);
-            //matches.push_back(path);
+            pArchiveNames.emplace_back(path);
+        }
+    }
+
+    // Uppercase alphabetic patches: patch-A.MPQ through patch-Z.MPQ
+    for (char c = 'A'; c <= 'Z'; ++c)
+    {
+        sprintf(path, "%s-%c.MPQ", scanmatch, c);
+#ifdef __linux__
+        if (FILE* h = fopen64(path, "rb"))
+#else
+        if (FILE* h = fopen(path, "rb"))
+#endif
+        {
+            fclose(h);
+            pArchiveNames.emplace_back(path);
+        }
+    }
+
+    // Lowercase alphabetic patches: patch-a.MPQ through patch-z.MPQ
+    for (char c = 'a'; c <= 'z'; ++c)
+    {
+        sprintf(path, "%s-%c.MPQ", scanmatch, c);
+#ifdef __linux__
+        if (FILE* h = fopen64(path, "rb"))
+#else
+        if (FILE* h = fopen(path, "rb"))
+#endif
+        {
+            fclose(h);
             pArchiveNames.emplace_back(path);
         }
     }

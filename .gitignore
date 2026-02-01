@@ -11,6 +11,7 @@
 !/modules/*.h
 !/modules/*.cmake
 /build*/
+build.log
 /var/*
 !/var/build/.gitkeep
 !/var/ccache/.gitkeep

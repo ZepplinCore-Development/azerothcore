@@ -99,18 +99,13 @@ float CONF_float_to_int16_limit = 2048.0f;   // Max accuracy = val/65536
 float CONF_flat_height_delta_limit = 0.005f; // If max - min less this value - surface is flat
 float CONF_flat_liquid_delta_limit = 0.001f; // If max - min less this value - liquid surface is flat
 
-// List MPQ for extract from
-const char* CONF_mpq_list[] =
+// Base MPQ archives (patches loaded dynamically)
+const char* CONF_base_mpq_list[] =
 {
     "common.MPQ",
     "common-2.MPQ",
     "lichking.MPQ",
     "expansion.MPQ",
-    "patch.MPQ",
-    "patch-2.MPQ",
-    "patch-3.MPQ",
-    "patch-4.MPQ",
-    "patch-5.MPQ",
 };
 
 static const char* const langs[] = {"enGB", "enUS", "deDE", "esES", "frFR", "koKR", "zhCN", "zhTW", "enCN", "enTW", "esMX", "ruRU" };
@@ -1163,10 +1158,44 @@ void LoadLocaleMPQFiles(int const locale)
 void LoadCommonMPQFiles()
 {
     char filename[512];
-    int count = sizeof(CONF_mpq_list) / sizeof(char*);
+
+    // Load base archives
+    int count = sizeof(CONF_base_mpq_list) / sizeof(char*);
     for (int i = 0; i < count; ++i)
     {
-        sprintf(filename, "%s/Data/%s", input_path, CONF_mpq_list[i]);
+        sprintf(filename, "%s/Data/%s", input_path, CONF_base_mpq_list[i]);
+        if (FileExists(filename))
+            new MPQArchive(filename);
+    }
+
+    // Load patch archives dynamically
+    // Order: patch.MPQ, patch-2 through patch-99, patch-A through patch-Z, patch-a through patch-z
+    // Later patches override earlier ones
+
+    // Numeric patches: patch.MPQ, patch-2.MPQ through patch-99.MPQ
+    for (int i = 1; i <= 99; ++i)
+    {
+        if (i == 1)
+            sprintf(filename, "%s/Data/patch.MPQ", input_path);
+        else
+            sprintf(filename, "%s/Data/patch-%d.MPQ", input_path, i);
+
+        if (FileExists(filename))
+            new MPQArchive(filename);
+    }
+
+    // Uppercase alphabetic patches: patch-A.MPQ through patch-Z.MPQ
+    for (char c = 'A'; c <= 'Z'; ++c)
+    {
+        sprintf(filename, "%s/Data/patch-%c.MPQ", input_path, c);
+        if (FileExists(filename))
+            new MPQArchive(filename);
+    }
+
+    // Lowercase alphabetic patches: patch-a.MPQ through patch-z.MPQ
+    for (char c = 'a'; c <= 'z'; ++c)
+    {
+        sprintf(filename, "%s/Data/patch-%c.MPQ", input_path, c);
         if (FileExists(filename))
             new MPQArchive(filename);
     }
