@@ -5854,9 +5854,14 @@ float Player::CalculateReputationGain(ReputationSource source, uint32 creatureOr
 {
     float percent = 100.0f;
 
-    float repMod = noQuestBonus ? 0.0f : float(GetTotalAuraModifier(SPELL_AURA_MOD_REPUTATION_GAIN));
+    // Generic reputation bonus (MiscValue = 0, applies to all factions, e.g. Diplomacy)
+    float repMod = noQuestBonus ? 0.0f : float(GetTotalAuraModifierByMiscValue(SPELL_AURA_MOD_REPUTATION_GAIN, 0));
 
-    // faction specific auras only seem to apply to kills
+    // Faction-specific all-source bonus (MiscValue = faction ID, e.g. city tabards)
+    if (!noQuestBonus)
+        repMod += GetTotalAuraModifierByMiscValue(SPELL_AURA_MOD_REPUTATION_GAIN, faction);
+
+    // Faction-specific kill-only bonus (aura 190, e.g. dungeon championing tabards)
     if (source == REPUTATION_SOURCE_KILL)
         repMod += GetTotalAuraModifierByMiscValue(SPELL_AURA_MOD_FACTION_REPUTATION_GAIN, faction);
 
