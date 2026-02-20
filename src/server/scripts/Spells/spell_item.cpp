@@ -38,12 +38,6 @@ enum MassiveSeaforiumCharge
     ITEM_MASSIVE_SEAFORIUM_CHARGE = 39213,
 };
 
-enum AlchemistStone
-{
-    SPELL_ALCHEMISTS_STONE_EXTRA_HEAL       = 21399,
-    SPELL_ALCHEMISTS_STONE_EXTRA_MANA       = 21400
-};
-
 enum DarkmoonCardGreatness
 {
     SPELL_DARKMOON_CARD_STRENGTH            = 60229,
@@ -4258,37 +4252,6 @@ class spell_item_eye_of_grillok_aura : public AuraScript
     }
 };
 
-enum FelManaPotion
-{
-    SPELL_ALCHEMIST_STONE          = 17619,
-    SPELL_ALCHEMIST_STONE_ENERGIZE = 21400
-};
-
-class spell_item_fel_mana_potion : public AuraScript
-{
-    PrepareAuraScript(spell_item_fel_mana_potion)
-
-    bool Validate(SpellInfo const* /*spellInfo*/) override
-    {
-        return ValidateSpellInfo({ SPELL_ALCHEMIST_STONE, SPELL_ALCHEMIST_STONE_ENERGIZE });
-    }
-
-    void OnPeriodic(AuraEffect const* /*aurEff*/)
-    {
-        if (Unit* caster = GetCaster())
-            if (caster->HasAura(SPELL_ALCHEMIST_STONE))
-            {
-                uint32 val = GetSpellInfo()->Effects[EFFECT_0].BasePoints * 0.4f;
-                caster->CastCustomSpell(SPELL_ALCHEMIST_STONE_ENERGIZE, SPELLVALUE_BASE_POINT0, val, caster, true);
-            }
-    }
-
-    void Register() override
-    {
-        OnEffectPeriodic += AuraEffectPeriodicFn(spell_item_fel_mana_potion::OnPeriodic, EFFECT_0, SPELL_AURA_PERIODIC_ENERGIZE);
-    }
-};
-
 // 32578 - Gor'drek's Ointment
 enum DreksOintment
 {
@@ -4472,51 +4435,6 @@ class spell_item_bloodsail_admiral_hat : public AuraScript
     void Register() override
     {
         OnEffectRemove += AuraEffectRemoveFn(spell_item_bloodsail_admiral_hat::OnRemove, EFFECT_0, SPELL_AURA_DUMMY, AURA_EFFECT_HANDLE_REAL);
-    }
-};
-
-// 17619 - Alchemist's Stone
-class spell_item_alchemists_stone : public AuraScript
-{
-    PrepareAuraScript(spell_item_alchemists_stone);
-
-    bool Validate(SpellInfo const* /*spellInfo*/) override
-    {
-        return ValidateSpellInfo({ SPELL_ALCHEMISTS_STONE_EXTRA_HEAL, SPELL_ALCHEMISTS_STONE_EXTRA_MANA });
-    }
-
-    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
-    {
-        PreventDefaultAction();
-        SpellInfo const* spellInfo = eventInfo.GetSpellInfo();
-        if (!spellInfo)
-            return;
-
-        Unit* caster = eventInfo.GetActionTarget();
-        for (uint8 i = 0; i < MAX_SPELL_EFFECTS; ++i)
-        {
-            uint32 spellId;
-            int32 bp0;
-            switch (spellInfo->Effects[i].Effect)
-            {
-                case SPELL_EFFECT_HEAL:
-                    spellId = SPELL_ALCHEMISTS_STONE_EXTRA_HEAL;
-                    bp0 = CalculatePct(spellInfo->Effects[i].CalcValue(caster), 40);
-                    break;
-                case SPELL_EFFECT_ENERGIZE:
-                    spellId = SPELL_ALCHEMISTS_STONE_EXTRA_MANA;
-                    bp0 = CalculatePct(spellInfo->Effects[i].CalcValue(caster), 40);
-                    break;
-                default:
-                    continue;
-            }
-            caster->CastCustomSpell(spellId, SPELLVALUE_BASE_POINT0, bp0, nullptr, true, nullptr, aurEff);
-        }
-    }
-
-    void Register() override
-    {
-        OnEffectProc += AuraEffectProcFn(spell_item_alchemists_stone::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
     }
 };
 
@@ -6307,7 +6225,6 @@ void AddSC_item_spell_scripts()
     RegisterSpellScript(spell_item_venomhide_feed);
     RegisterSpellScript(spell_item_scroll_of_retribution);
     RegisterSpellAndAuraScriptPair(spell_item_eye_of_grillok, spell_item_eye_of_grillok_aura);
-    RegisterSpellScript(spell_item_fel_mana_potion);
     RegisterSpellScript(spell_item_gor_dreks_ointment);
     RegisterSpellScript(spell_item_skyguard_blasting_charges);
     RegisterSpellScript(spell_item_luffa);
@@ -6315,7 +6232,6 @@ void AddSC_item_spell_scripts()
     RegisterSpellScript(spell_item_multiphase_goggles);
     RegisterSpellScript(spell_item_bloodsail_admiral_hat);
     RegisterSpellScript(spell_item_brewfest_hops);
-    RegisterSpellScript(spell_item_alchemists_stone);
     RegisterSpellScript(spell_item_darkmoon_card_greatness);
     RegisterSpellScript(spell_item_death_choice);
     RegisterSpellScriptWithArgs(spell_item_lightning_capacitor, "spell_item_lightning_capacitor");
