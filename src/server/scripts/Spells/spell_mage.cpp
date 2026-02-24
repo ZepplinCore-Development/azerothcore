@@ -71,7 +71,9 @@ enum MageSpells
     SPELL_MAGE_MANA_SURGE                        = 37445,
     SPELL_MAGE_FROST_NOVA                        = 122,
     SPELL_MAGE_LIVING_BOMB_R1                    = 44457,
-    SPELL_MAGE_MISSILE_BARRAGE_PROC              = 44401
+    SPELL_MAGE_MISSILE_BARRAGE_PROC              = 44401,
+    SPELL_MAGE_MAGICAL_ATTUNEMENT                = 91056,
+    SPELL_MAGE_MAGICAL_ATTUNEMENT_MANA           = 91055
 };
 
 enum MageSpellIcons
@@ -1588,6 +1590,51 @@ class spell_mage_missile_barrage_proc : public AuraScript
     }
 };
 
+// 91056 - Magical Attunement
+class spell_mage_magical_attunement : public AuraScript
+{
+    PrepareAuraScript(spell_mage_magical_attunement);
+
+    bool Validate(SpellInfo const* /*spellInfo*/) override
+    {
+        return ValidateSpellInfo({ SPELL_MAGE_MAGICAL_ATTUNEMENT_MANA });
+    }
+
+    bool CheckProc(ProcEventInfo& eventInfo)
+    {
+        SpellInfo const* spellInfo = eventInfo.GetSpellInfo();
+        if (!spellInfo || !spellInfo->IsPositive())
+            return false;
+
+        HealInfo const* healInfo = eventInfo.GetHealInfo();
+        return healInfo && healInfo->GetEffectiveHeal() > 0;
+    }
+
+    void HandleProc(AuraEffect const* aurEff, ProcEventInfo& eventInfo)
+    {
+        PreventDefaultAction();
+
+        HealInfo const* healInfo = eventInfo.GetHealInfo();
+        if (!healInfo)
+            return;
+
+        uint32 effectiveHeal = healInfo->GetEffectiveHeal();
+        if (!effectiveHeal)
+            return;
+
+        int32 mana = int32(CalculatePct(effectiveHeal, aurEff->GetAmount()));
+        if (mana > 0)
+            GetTarget()->CastCustomSpell(SPELL_MAGE_MAGICAL_ATTUNEMENT_MANA,
+                SPELLVALUE_BASE_POINT0, mana, GetTarget(), true, nullptr, aurEff);
+    }
+
+    void Register() override
+    {
+        DoCheckProc += AuraCheckProcFn(spell_mage_magical_attunement::CheckProc);
+        OnEffectProc += AuraEffectProcFn(spell_mage_magical_attunement::HandleProc, EFFECT_0, SPELL_AURA_DUMMY);
+    }
+};
+
 void AddSC_mage_spell_scripts()
 {
     RegisterSpellScript(spell_mage_arcane_blast);
@@ -1632,4 +1679,5 @@ void AddSC_mage_spell_scripts()
     RegisterSpellScript(spell_mage_summon_water_elemental);
     RegisterSpellScript(spell_mage_fingers_of_frost);
     RegisterSpellScript(spell_mage_magic_absorption);
+    RegisterSpellScript(spell_mage_magical_attunement);
 }
