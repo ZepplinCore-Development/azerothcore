@@ -86,6 +86,8 @@ enum ShamanSpells
     SPELL_SHAMAN_T10_ENHANCEMENT_4P_BONUS       = 70832,
     SPELL_SHAMAN_LAVA_BURST_BONUS_DAMAGE        = 71824,
     SPELL_SHAMAN_TOTEM_OF_WRATH_SPELL_POWER     = 63283,
+    SPELL_SHAMAN_THUNDERBORNE_LEAP              = 900173,
+    SPELL_SHAMAN_THUNDERBORNE_LEAP_IMPACT       = 900174,
 };
 
 enum ShamanSpellIcons
@@ -2169,6 +2171,81 @@ class spell_sha_windfury_weapon : public AuraScript
     }
 };
 
+// 900173 - Thunderborne Leap
+// Leaps to enemy target using JUMP_DEST. Schedules the impact AoE
+// (900174) to cast when the caster lands, since TRIGGER_SPELL fires
+// at cast time (before movement) and cannot center AoE at the
+// landing position.
+// Uses AfterCast so the timer starts after MoveJump has begun,
+// and reads the spline duration directly for accurate timing.
+class spell_sha_thunderborne_leap : public SpellScript
+{
+    PrepareSpellScript(spell_sha_thunderborne_leap);
+
+    void HandleOnCast()
+    {
+        Player* player = GetCaster()->ToPlayer();
+        if (!player)
+            return;
+
+        // Draw weapons before the jump spline packet is sent.
+        // SetSheath alone is batched (end-of-tick), so force an
+        // immediate object update so the client sees weapons
+        // drawn before the SMSG_MONSTER_MOVE arrives.
+        player->SetSheath(SHEATH_STATE_MELEE);
+        player->SendUpdateToPlayer(player);
+    }
+
+    void HandleAfterCast()
+    {
+        Unit* caster = GetCaster();
+        if (!caster)
+            return;
+
+        // Read the actual spline duration — MoveJump has already
+        // started by the time AfterCast fires
+        uint32 travelTimeMs = caster->movespline->Duration();
+
+        ObjectGuid casterGUID = caster->GetGUID();
+
+        // Capture the spell target for auto-attack on landing.
+        // GetVictim() is null at this point because melee hasn't
+        // started yet — we need the explicit spell target instead.
+        Unit* target = GetExplTargetUnit();
+        ObjectGuid targetGUID = target ? target->GetGUID()
+                                       : ObjectGuid::Empty;
+
+        caster->m_Events.AddEventAtOffset(
+            [casterGUID, targetGUID]()
+            {
+                Player* player =
+                    ObjectAccessor::FindPlayer(casterGUID);
+                if (!player)
+                    return;
+
+                player->CastSpell(player,
+                    SPELL_SHAMAN_THUNDERBORNE_LEAP_IMPACT,
+                    true);
+
+                // Start auto-attack on the leap target
+                if (!targetGUID.IsEmpty())
+                    if (Unit* victim = ObjectAccessor::GetUnit(
+                            *player, targetGUID))
+                        if (player->IsValidAttackTarget(victim))
+                            player->Attack(victim, true);
+            },
+            Milliseconds(travelTimeMs));
+    }
+
+    void Register() override
+    {
+        OnCast += SpellCastFn(
+            spell_sha_thunderborne_leap::HandleOnCast);
+        AfterCast += SpellCastFn(
+            spell_sha_thunderborne_leap::HandleAfterCast);
+    }
+};
+
 void AddSC_shaman_spell_scripts()
 {
     RegisterSpellScript(spell_sha_totem_of_wrath);
@@ -2228,4 +2305,5 @@ void AddSC_shaman_spell_scripts()
     RegisterSpellScript(spell_sha_t9_elemental_4p_bonus);
     RegisterSpellScript(spell_sha_tidal_force_dummy);
     RegisterSpellScript(spell_sha_windfury_weapon);
+    RegisterSpellScript(spell_sha_thunderborne_leap);
 }
